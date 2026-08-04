@@ -78,8 +78,6 @@ struct CaseFileDTO: Codable {
     var claims: [ClaimDTO]
     var evidenceItems: [EvidenceDTO]
     var gaps: [GapDTO]
-    var stage: String
-
     init(from caseFile: CaseFile) {
         self.id = caseFile.id
         self.caseName = caseFile.caseName
@@ -89,7 +87,6 @@ struct CaseFileDTO: Codable {
         self.claims = caseFile.claims.map(ClaimDTO.init)
         self.evidenceItems = caseFile.evidenceItems.map(EvidenceDTO.init)
         self.gaps = caseFile.gaps.map(GapDTO.init)
-        self.stage = caseFile.stage.rawValue
     }
 
     func toCaseFile() -> CaseFile {
@@ -98,8 +95,7 @@ struct CaseFileDTO: Codable {
             applicant: applicant,
             respondent: respondent,
             claims: [],
-            evidenceItems: [],
-            stage: CaseStage(rawValue: stage) ?? .drafting
+            evidenceItems: []
         )
         cf.id = id
         cf.createdAt = createdAt

@@ -79,8 +79,8 @@ public actor RuleBasedLLM: LLMBackend {
         let json: [String: Any] = [
             "finding": finding,
             "refuted": refuted,
-            "confidence": refuted ? "high" : "high",
-            "blocking": refuted ? "none" : "none",
+            "confidence": "high",
+            "blocking": "none",
             "evidence_refs": evidenceRefs,
             "reasoning": refuted
                 ? "Rule-based detection found \(findings.count) violation(s)"

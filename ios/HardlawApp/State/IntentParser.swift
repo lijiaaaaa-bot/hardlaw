@@ -253,15 +253,16 @@ public struct IntentHandler {
         let salaryItems = caseFile.evidenceItems.filter {
             $0.name.contains("工资") || ($0.proofContentState.displayValue ?? "").contains("元")
         }
-        let numbers = salaryItems.flatMap { item -> [String] in
-            let pattern = try! NSRegularExpression(pattern: #"\d+\.?\d*"#)
-            let text = item.proofContentState.displayValue ?? ""
-            let range = NSRange(text.startIndex..., in: text)
-            return pattern.matches(in: text, range: range).compactMap {
-                Range($0.range, in: text).map { String(text[$0]) }
+        guard salaryItems.count >= 2 else { return 0 }
+        var conflicts = 0
+        for i in 0..<(salaryItems.count - 1) {
+            for j in (i + 1)..<salaryItems.count {
+                let a = salaryItems[i].proofContentState.displayValue ?? ""
+                let b = salaryItems[j].proofContentState.displayValue ?? ""
+                if a != b && !a.isEmpty && !b.isEmpty { conflicts += 1 }
             }
         }
-        return Set(numbers).count - 1
+        return conflicts
     }
 }
 

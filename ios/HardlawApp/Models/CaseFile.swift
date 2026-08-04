@@ -16,15 +16,28 @@ public final class CaseFile: Identifiable, Hashable {
     public var claims: [ClaimItem]        // 仲裁请求列表
     public var evidenceItems: [EvidenceItem]  // 证据目录
     public var gaps: [GapItem]            // 待核实问题
-    public var stage: CaseStage
+
+    /// 派生阶段 — 纯计算，不从 init 赋值
+    public var stage: CaseStage {
+        if evidenceItems.isEmpty && claims.isEmpty { return .drafting }
+        let allDrafted = evidenceItems.allSatisfy {
+            ($0.proofContentState.displayValue?.isEmpty == false) && !$0.proofContentState.stale
+        }
+        if !allDrafted && !evidenceItems.isEmpty { return .evidenceCollection }
+        let unresolved = gaps.filter { !$0.isResolved }.count
+        if unresolved > 0 { return .gapResolution }
+        let allReviewed = evidenceItems.allSatisfy { $0.humanReviewed }
+        if !allReviewed && !evidenceItems.isEmpty { return .catalogReview }
+        if !evidenceItems.isEmpty { return .readyToFile }
+        return .drafting
+    }
 
     public init(
         caseName: String = "",
         applicant: String = "",
         respondent: String = "",
         claims: [ClaimItem] = [],
-        evidenceItems: [EvidenceItem] = [],
-        stage: CaseStage = .drafting
+        evidenceItems: [EvidenceItem] = []
     ) {
         self.id = UUID()
         self.caseName = caseName
@@ -33,7 +46,6 @@ public final class CaseFile: Identifiable, Hashable {
         self.createdAt = Date()
         self.claims = claims
         self.evidenceItems = evidenceItems
-        self.stage = stage
         self.gaps = []
     }
 }
@@ -88,10 +100,10 @@ public final class EvidenceItem: Identifiable {
     public var proofContent: String { proofContentState.displayValue ?? "" }
     public var proofPurpose: String { proofPurposeState.displayValue ?? "" }
     public var verificationStatus: VerificationStatus {
+        if proofContentState.stale { return .inconsistent }
         if humanReviewed { return .verified }
         if proofContentState.status == .humanOverridden { return .needsReview }
         if proofContentState.status == .machineDraft { return .unverified }
-        if proofContentState.stale { return .inconsistent }
         return .unverified
     }
 
