@@ -11,6 +11,9 @@ struct CaseWorkbenchView: View {
     @State private var commandText = ""
     @State private var isProcessing = false
     @State private var expandedNeedsYou = false
+    @State private var statusMessage: String?
+    @State private var showSourceView = false
+    @State private var sourceItem: EvidenceItem?
 
     var body: some View {
         ScrollView {
@@ -104,11 +107,28 @@ struct CaseWorkbenchView: View {
     func handleNeedsYouTap(_ item: NeedsYouItem) { item.action() }
 
     func handleCommand(_ text: String) {
-        isProcessing = true
-        // TODO: IntentParser → ProcedureResolver → run AI
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        let intent = IntentParser.parse(text, stage: derivedStage)
+        let result = IntentHandler.handle(intent, caseFile: caseFile)
+        statusMessage = result.message
+        if result.action == .runAI { isProcessing = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             isProcessing = false
+            statusMessage = nil
         }
+    }
+
+    var derivedStage: CaseStage {
+        if caseFile.evidenceItems.isEmpty && caseFile.claims.isEmpty { return .drafting }
+        let allDrafted = caseFile.evidenceItems.allSatisfy {
+            ($0.proofContentState.displayValue?.isEmpty == false) && !$0.proofContentState.stale
+        }
+        if !allDrafted && !caseFile.evidenceItems.isEmpty { return .evidenceCollection }
+        let unresolved = caseFile.gaps.filter { !$0.isResolved }.count
+        if unresolved > 0 { return .gapResolution }
+        let allReviewed = caseFile.evidenceItems.allSatisfy { $0.humanReviewed }
+        if !allReviewed && !caseFile.evidenceItems.isEmpty { return .catalogReview }
+        if !caseFile.evidenceItems.isEmpty { return .readyToFile }
+        return .drafting
     }
 
     func exportCatalog() {
