@@ -1,4 +1,5 @@
 import Foundation
+import NaturalLanguage
 import HardlawKit
 
 // MARK: - LawAgent
@@ -308,32 +309,54 @@ public final class LawAgent {
         let ocrTypes = Self.documentTypeKeywords.filter { ocrText.contains($0) }
         facts.documentTypes = Array((nameTypes.isEmpty ? ocrTypes : nameTypes).prefix(2))
 
-        // 2. Names — only after explicit role markers, to avoid misattribution
-        let fullRange = NSRange(ocrText.startIndex..., in: ocrText)
-        let namePattern = try! NSRegularExpression(
-            pattern: #"(申请人|被申请人|甲方|乙方|用人单位|劳动者|员工|姓名|法定代表人|负责人|委托代理人|单位名称|公司名称|户名|收款人|付款人)(?:[：:][ \t　]*|[ \t　]+)([^\s，。；、,.!?！？;()（）【】]{2,24})"#)
+        // 2. Names — NLTagger (.nameType) for person/organization names,
+        //    only after explicit role markers to avoid misattribution
+        let stringRange = ocrText.startIndex..<ocrText.endIndex
+        let tagger = NLTagger(tagSchemes: [.nameType])
+        tagger.string = ocrText
+        tagger.setLanguage(.simplifiedChinese, range: stringRange)
         var seenNames = Set<String>()
-        for match in namePattern.matches(in: ocrText, range: fullRange) {
-            guard let nameRange = Range(match.range(at: 2), in: ocrText) else { continue }
-            let name = String(ocrText[nameRange]).trimmingCharacters(in: .whitespaces)
+        tagger.enumerateTags(in: stringRange, unit: .word, scheme: .nameType, options: [.omitWhitespace]) { tag, tokenRange in
+            guard tag == .personalName || tag == .organizationName else { return true }
+            let name = String(ocrText[tokenRange]).trimmingCharacters(in: .whitespaces)
             guard name.range(of: #"[一-龥]"#, options: .regularExpression) != nil,
-                  !seenNames.contains(name) else { continue }
+                  !seenNames.contains(name),
+                  hasRoleMarker(in: ocrText, tokenRange: tokenRange) else { return true }
             seenNames.insert(name)
             facts.names.append(name)
-            if facts.names.count >= 2 { break }
+            return facts.names.count < 2
         }
 
-        // 3. Dates — full dates preferred over year-month
-        let datePattern = try! NSRegularExpression(
-            pattern: #"\d{4}年\d{1,2}月\d{1,2}日|\d{4}年\d{1,2}月|\d{4}[-/.]\d{1,2}[-/.]\d{1,2}"#)
-        var seenDates = Set<String>()
-        for match in datePattern.matches(in: ocrText, range: fullRange) {
-            guard let r = Range(match.range, in: ocrText) else { continue }
-            let date = String(ocrText[r])
-            guard !seenDates.contains(date) else { continue }
-            seenDates.insert(date)
-            facts.dates.append(date)
-            if facts.dates.count >= 3 { break }
+        // 3. Dates — NSDataDetector handles Chinese 年月日 formats (zh_CN
+        //    locale conventions); matched spans are cited verbatim.
+        let fullRange = NSRange(ocrText.startIndex..., in: ocrText)
+        if let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.date.rawValue) {
+            var seenDates = Set<String>()
+            for match in detector.matches(in: ocrText, range: fullRange) {
+                guard let r = Range(match.range, in: ocrText) else { continue }
+                let date = String(ocrText[r])
+                // Keep full dates only — a bare time like "15:00" has no
+                // 4-digit year (the detector infers today's date for it).
+                guard date.range(of: #"\d{4}"#, options: .regularExpression) != nil,
+                      !seenDates.contains(date) else { continue }
+                seenDates.insert(date)
+                facts.dates.append(date)
+                if facts.dates.count >= 3 { break }
+            }
+            // NSDataDetector requires a day for CJK dates, so year-month-only
+            // strings ("2024年5月") are recovered with a minimal regex fallback.
+            if facts.dates.count < 3 {
+                let yearMonthPattern = try! NSRegularExpression(pattern: #"\d{4}年\d{1,2}月"#)
+                for match in yearMonthPattern.matches(in: ocrText, range: fullRange) {
+                    guard let r = Range(match.range, in: ocrText) else { continue }
+                    let date = String(ocrText[r])
+                    guard !seenDates.contains(date),
+                          !seenDates.contains(where: { $0.contains(date) }) else { continue }
+                    seenDates.insert(date)
+                    facts.dates.append(date)
+                    if facts.dates.count >= 3 { break }
+                }
+            }
         }
 
         // 4. Amounts — labeled context preferred ("应发工资合计：7550元"),
@@ -364,6 +387,17 @@ public final class LawAgent {
         }
 
         return facts
+    }
+
+    /// True when a role marker (申请人/甲方/…) immediately precedes a tagged
+    /// name token (allowing a trailing colon or whitespace), so names are only
+    /// captured where the document explicitly assigns a role.
+    private func hasRoleMarker(in text: String, tokenRange: Range<String.Index>) -> Bool {
+        let lookback = text.index(tokenRange.lowerBound, offsetBy: -8, limitedBy: text.startIndex) ?? text.startIndex
+        let before = text[lookback..<tokenRange.lowerBound]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "：: "))
+        return Self.roleNameMarkers.contains { before.hasSuffix($0) }
     }
 
     /// Drop a leading 年月日 prefix from an amount label when it clearly belongs
@@ -496,6 +530,14 @@ public final class LawAgent {
             claimKeywords: ["劳动关系", "入职", "用工"],
             purpose: "证明双方存在劳动关系，支持劳动关系确认相关仲裁请求",
             ocrOnlyPurpose: "证明双方存在劳动关系"),
+    ]
+
+    /// Role markers that assign an identity to a following name, matching the
+    /// markers the previous regex-based extractor recognized.
+    private static let roleNameMarkers: [String] = [
+        "申请人", "被申请人", "甲方", "乙方", "用人单位", "劳动者", "员工",
+        "姓名", "法定代表人", "负责人", "委托代理人",
+        "单位名称", "公司名称", "户名", "收款人", "付款人",
     ]
 
     private static let documentTypeKeywords: [String] = [

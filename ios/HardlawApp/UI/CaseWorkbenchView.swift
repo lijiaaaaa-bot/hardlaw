@@ -1,6 +1,7 @@
 import SwiftUI
 import CoreGraphics
 import ImageIO
+import PDFKit
 import HardlawKit
 
 // MARK: - 案件看板（单一滚动视图，替代 TabView）
@@ -51,8 +52,10 @@ struct CaseWorkbenchView: View {
                     Button { addNewEvidence() } label: {
                         Label("添加证据", systemImage: "plus.rectangle")
                     }
-                    Button { exportCatalog() } label: {
-                        Label("导出目录", systemImage: "square.and.arrow.up")
+                    if let url = ExcelExport.exportCatalog(caseFile) {
+                        ShareLink(item: url) {
+                            Label("导出目录", systemImage: "square.and.arrow.up")
+                        }
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
@@ -63,9 +66,6 @@ struct CaseWorkbenchView: View {
             CommandBar(text: $commandText, isProcessing: $isProcessing,
                        placeholder: nextAction, onSubmit: handleCommand,
                        onImport: { showFileImporter = true })
-        }
-        .sheet(item: $exportURL) { url in
-            ShareSheet(items: [url])
         }
         .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.pdf, .image, .plainText],
                       allowsMultipleSelection: true) { result in
@@ -203,18 +203,6 @@ struct CaseWorkbenchView: View {
         }
     }
 
-    @State private var exportURL: URL?
-    @State private var showShareSheet = false
-
-    func exportCatalog() {
-        if let url = ExcelExport.exportCatalog(caseFile) {
-            exportURL = url
-            showShareSheet = true
-        } else {
-            statusMessage = "导出失败"
-        }
-    }
-
     func verifySnippets() {
         var validator = EvidenceValidator()
         for item in caseFile.evidenceItems where !item.sourceOCRText.isEmpty {
@@ -253,11 +241,14 @@ struct CaseWorkbenchView: View {
             return (try? String(contentsOf: url, encoding: .utf8)) ?? ""
         }
 
-        // Render image/PDF pages to CGImage, then run Vision OCR
+        // Render image/PDF pages to CGImage, then run Vision OCR.
+        // recognizeTextChinese preprocesses each rendered page (grayscale,
+        // contrast stretch, deskew, binarization) before OCR so low-quality
+        // scans and handwritten Chinese annotations are recovered.
         let collector = VisionEvidenceCollector()
         var pages: [String] = []
         for image in renderImages(from: url) {
-            if let result = try? await collector.recognizeText(in: image) {
+            if let result = try? await collector.recognizeTextChinese(in: image) {
                 pages.append(result.fullText)
             }
         }
@@ -268,27 +259,18 @@ struct CaseWorkbenchView: View {
     /// Caller must hold the security-scoped resource access.
     private static func renderImages(from url: URL) -> [CGImage] {
         if url.pathExtension.lowercased() == "pdf" {
-            guard let document = CGPDFDocument(url as CFURL) else { return [] }
-            let pageCount = min(document.numberOfPages, 10)
+            guard let document = PDFDocument(url: url) else { return [] }
+            let pageCount = min(document.pageCount, 10)
             var images: [CGImage] = []
-            for pageNumber in 1...pageCount {
-                guard let page = document.page(at: pageNumber) else { continue }
-                let box = page.getBoxRect(.mediaBox)
+            for pageIndex in 0..<pageCount {
+                guard let page = document.page(at: pageIndex) else { continue }
+                let box = page.bounds(for: .mediaBox)
                 let scale: CGFloat = 2.0 // render at 2x for better OCR accuracy
-                let width = max(1, Int(box.width * scale))
-                let height = max(1, Int(box.height * scale))
-                guard let context = CGContext(
-                    data: nil, width: width, height: height,
-                    bitsPerComponent: 8, bytesPerRow: 0,
-                    space: CGColorSpaceCreateDeviceRGB(),
-                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-                ) else { continue }
-                context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
-                context.fill(CGRect(x: 0, y: 0, width: width, height: height))
-                context.scaleBy(x: scale, y: scale)
-                context.translateBy(x: -box.origin.x, y: -box.origin.y)
-                context.drawPDFPage(page)
-                if let image = context.makeImage() { images.append(image) }
+                let size = CGSize(width: max(1, box.width * scale),
+                                  height: max(1, box.height * scale))
+                if let image = page.thumbnail(of: size, for: .mediaBox).cgImage {
+                    images.append(image)
+                }
             }
             return images
         }
@@ -720,16 +702,4 @@ struct EvidenceEditorView: View {
     }
 }
 
-// MARK: - Share Sheet
-
-struct ShareSheet: UIViewControllerRepresentable {
-    let items: [Any]
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
-}
-
-extension URL: @retroactive Identifiable {
-    public var id: String { absoluteString }
-}
+// MARK: - Share Sheet (replaced by native ShareLink in the toolbar menu)
