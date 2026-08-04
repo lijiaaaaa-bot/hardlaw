@@ -50,6 +50,14 @@ targets:
         NSCameraUsageDescription: "Hardlaw uses the camera to audit content for policy compliance in real time. All processing is performed on-device."
         NSPhotoLibraryUsageDescription: "Hardlaw needs access to your photo library to audit images for policy compliance."
         UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~iphone:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
 
 schemes:
   HardlawKit:
