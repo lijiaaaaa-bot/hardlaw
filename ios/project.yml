@@ -18,10 +18,18 @@ targets:
     sources:
       - path: HardlawKit/Sources
       - path: HardlawKit/Vision
+      - path: HardlawKit/Vision/PaddleOCR
     settings:
       base:
         GENERATE_INFOPLIST_FILE: true
         PRODUCT_BUNDLE_IDENTIFIER: com.hardlaw.kit
+        LIBRARY_SEARCH_PATHS:
+          - $(PROJECT_DIR)/HardlawKit/Vision/PaddleOCR/lib
+        HEADER_SEARCH_PATHS:
+          - $(PROJECT_DIR)/HardlawKit/Vision/PaddleOCR/include
+        OTHER_LDFLAGS:
+          - -lpaddle_api_light_bundled
+          - -lc++
 
   HardlawKitTests:
     type: bundle.unit-test
