@@ -53,87 +53,35 @@ struct CaseWorkbenchView: View {
             }
         }
         .onAppear {
-            runAutoVerification()
+            verifySnippets()
         }
     }
 
-    /// 自动运行验证
-    private func runAutoVerification() {
-        // 验证每条证据的 proofContent 是否与 OCR 文字一致
+    /// Mark a catalog item as human-reviewed.
+    private func confirmItem(_ item: EvidenceItem) {
+        item.humanReviewed = true
+        item.proofContentState.confirm()
+        item.proofPurposeState.confirm()
+    }
+
+    /// Run snippet-based verification (never auto-stamps; shows provenance to human).
+    private func verifySnippets() {
         var validator = EvidenceValidator()
         for item in caseFile.evidenceItems {
             if !item.sourceOCRText.isEmpty {
                 validator.addSource("evidence_\(item.number)", item.sourceOCRText)
             }
         }
-
         for item in caseFile.evidenceItems {
             guard !item.sourceOCRText.isEmpty else { continue }
-
-            // 检查证明内容中的关键数字是否存在于源文件
-            let keyNumbers = extractKeyNumbers(from: item.proofContent)
-            var allVerified = true
-            for num in keyNumbers {
-                if !item.sourceOCRText.contains(num) {
-                    allVerified = false
-                    break
-                }
+            let numbers = extractKeyNumbers(from: item.proofContentState.displayValue ?? "")
+            var allMatch = true
+            for num in numbers {
+                if !item.sourceOCRText.contains(num) { allMatch = false; break }
             }
-
-            item.verificationStatus = allVerified ? .verified : .inconsistent
-        }
-
-        // 自动检测常见缺口
-        detectCommonGaps()
-    }
-
-    /// 检测常见证据缺口
-    private func detectCommonGaps() {
-        caseFile.gaps = []
-
-        // 检查必要证据类型
-        let evidenceNames = Set(caseFile.evidenceItems.map { $0.name })
-        let criticalTypes = [
-            "劳动合同": "证明劳动关系和工资标准",
-            "银行流水": "证明实际工资发放和欠薪事实",
-            "参保证明": "证明劳动关系存续期间"
-        ]
-
-        for (typeName, purpose) in criticalTypes {
-            if !evidenceNames.contains(where: { $0.contains(typeName) }) {
-                caseFile.gaps.append(GapItem(
-                    severity: .high,
-                    description: "缺少\(typeName)",
-                    suggestedRemedy: "建议补充\(typeName)（\(purpose)）",
-                    relatedClaim: "全部请求"
-                ))
-            }
-        }
-
-        // 检查原件比例
-        let originalCount = caseFile.evidenceItems.filter { $0.isOriginal }.count
-        if Double(originalCount) / Double(max(caseFile.evidenceItems.count, 1)) < 0.5 {
-            caseFile.gaps.append(GapItem(
-                severity: .medium,
-                description: "原件比例偏低（\(originalCount)/\(caseFile.evidenceItems.count)），开庭时可能被要求提供原件核对",
-                suggestedRemedy: "尽量补充原件，复印件需与原件核对一致"
-            ))
-        }
-
-        // 检查薪资一致性
-        let salaryItems = caseFile.evidenceItems.filter {
-            $0.name.contains("工资") || $0.proofContent.contains("工资") || $0.proofContent.contains("元")
-        }
-        if salaryItems.count >= 2 {
-            let salaryNumbers = salaryItems.flatMap { extractKeyNumbers(from: $0.proofContent) }
-            let uniqueSalaries = Set(salaryNumbers)
-            if uniqueSalaries.count > 1 {
-                caseFile.gaps.append(GapItem(
-                    severity: .medium,
-                    description: "多份证据显示的工资金额不完全一致：\(uniqueSalaries.sorted().joined(separator: "、"))",
-                    suggestedRemedy: "社保缴费基数不等于实际工资（社平60%-300%为正常范围）。确认以工资表和银行流水为准。",
-                    relatedClaim: "欠薪相关请求"
-                ))
+            // Never auto-stamp green. Mark stale if numbers don't match.
+            if !allMatch {
+                item.proofContentState.stale = true
             }
         }
     }
@@ -281,15 +229,19 @@ struct EvidenceEditorView: View {
                 }
 
                 Section("证明内容（AI 可辅助生成）") {
-                    TextEditor(text: $item.proofContent)
-                        .frame(minHeight: 100)
-                        .font(.callout)
+                    TextEditor(text: Binding(
+                        get: { item.proofContentState.displayValue ?? "" },
+                        set: { item.proofContentState.override(with: $0) }
+                    ))
+                    .frame(minHeight: 100).font(.callout)
                 }
 
                 Section("证明目的") {
-                    TextEditor(text: $item.proofPurpose)
-                        .frame(minHeight: 80)
-                        .font(.callout)
+                    TextEditor(text: Binding(
+                        get: { item.proofPurposeState.displayValue ?? "" },
+                        set: { item.proofPurposeState.override(with: $0) }
+                    ))
+                    .frame(minHeight: 80).font(.callout)
                 }
 
                 Section("源文件 OCR 文字") {

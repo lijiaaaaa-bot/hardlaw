@@ -75,10 +75,23 @@ public final class EvidenceItem: Identifiable {
     public var name: String              // 证据名称
     public var isOriginal: Bool          // 原件/复印件
     public var pageCount: Int            // 页码
-    public var proofContent: String      // 证明内容（AI 自动生成草稿）
-    public var proofPurpose: String      // 证明目的（AI 自动生成草稿）
+    public var proofContentState: FieldState  // 证明内容（AI草稿 + 人工审核状态）
+    public var proofPurposeState: FieldState  // 证明目的（AI草稿 + 人工审核状态）
     public var sourceOCRText: String     // Vision OCR 提取的源文件文字
-    public var verificationStatus: VerificationStatus
+    public var provenance: Provenance    // 引用链追踪
+    public var humanReviewed: Bool       // 律师已逐项核对
+    public var batchID: UUID?            // 所属导入批次
+
+    /// Computed display values
+    public var proofContent: String { proofContentState.displayValue ?? "" }
+    public var proofPurpose: String { proofPurposeState.displayValue ?? "" }
+    public var verificationStatus: VerificationStatus {
+        if humanReviewed { return .verified }
+        if proofContentState.status == .humanOverridden { return .needsReview }
+        if proofContentState.status == .machineDraft { return .unverified }
+        if proofContentState.stale { return .inconsistent }
+        return .unverified
+    }
 
     public init(
         group: String = "",
@@ -88,8 +101,7 @@ public final class EvidenceItem: Identifiable {
         pageCount: Int = 1,
         proofContent: String = "",
         proofPurpose: String = "",
-        sourceOCRText: String = "",
-        verificationStatus: VerificationStatus = .unverified
+        sourceOCRText: String = ""
     ) {
         self.id = UUID()
         self.group = group
@@ -97,10 +109,12 @@ public final class EvidenceItem: Identifiable {
         self.name = name
         self.isOriginal = isOriginal
         self.pageCount = pageCount
-        self.proofContent = proofContent
-        self.proofPurpose = proofPurpose
+        self.proofContentState = FieldState(machineValue: proofContent.isEmpty ? nil : proofContent)
+        self.proofPurposeState = FieldState(machineValue: proofPurpose.isEmpty ? nil : proofPurpose)
         self.sourceOCRText = sourceOCRText
-        self.verificationStatus = verificationStatus
+        self.provenance = Provenance()
+        self.humanReviewed = false
+        self.batchID = nil
     }
 }
 
@@ -138,9 +152,43 @@ public final class GapItem: Identifiable {
     }
 }
 
-public enum GapSeverity: String, CaseIterable, Sendable {
+public enum GapSeverity: String, CaseIterable, Codable, Sendable {
     case critical = "严重"
     case high = "重要"
     case medium = "一般"
     case low = "轻微"
+}
+
+// MARK: - 证据冲突
+
+public struct ConflictItem: Codable, Identifiable, Sendable {
+    public let id: UUID
+    public var kind: ConflictKind
+    public var description: String
+    public var severity: GapSeverity
+    public var leftSource: String
+    public var rightSource: String
+    public var status: ConflictStatus
+
+    public init(kind: ConflictKind = .amountMismatch,
+                description: String = "",
+                severity: GapSeverity = .high,
+                leftSource: String = "",
+                rightSource: String = "") {
+        self.id = UUID()
+        self.kind = kind
+        self.description = description
+        self.severity = severity
+        self.leftSource = leftSource
+        self.rightSource = rightSource
+        self.status = .open
+    }
+}
+
+public enum ConflictKind: String, Codable, Sendable {
+    case amountMismatch, dateConflict, identityUnverified, sourceMissing
+}
+
+public enum ConflictStatus: String, Codable, Sendable {
+    case open, dismissed, resolvedByHuman
 }
