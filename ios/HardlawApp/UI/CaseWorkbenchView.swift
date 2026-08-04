@@ -1,4 +1,6 @@
 import SwiftUI
+import CoreGraphics
+import ImageIO
 import HardlawKit
 
 // MARK: - 案件看板（单一滚动视图，替代 TabView）
@@ -68,13 +70,37 @@ struct CaseWorkbenchView: View {
         .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.pdf, .image, .plainText],
                       allowsMultipleSelection: true) { result in
             if case .success(let urls) = result {
+                var importedItems: [EvidenceItem] = []
                 for url in urls {
                     let item = EvidenceItem(number: caseFile.evidenceItems.count + 1,
                                             name: url.lastPathComponent)
                     caseFile.evidenceItems.append(item)
+                    importedItems.append(item)
                 }
-                statusMessage = "已导入 \(urls.count) 个文件"
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { statusMessage = nil }
+                statusMessage = "已导入 \(urls.count) 个文件，正在OCR识别…"
+                isProcessing = true
+                let agent = LawAgent()
+                Task {
+                    var failed = 0
+                    for (url, item) in zip(urls, importedItems) {
+                        // OCR each imported image/PDF, then generate the catalog entry
+                        let ocrText = await Self.recognizeText(from: url)
+                        item.sourceOCRText = ocrText
+                        guard !ocrText.isEmpty else {
+                            failed += 1
+                            continue
+                        }
+                        await agent.generateCatalogEntry(item: item, claimContext: caseFile.claims) { p in
+                            statusMessage = "\(p.step) · \(p.detail)"
+                        }
+                    }
+                    statusMessage = failed == 0
+                        ? "已完成 \(urls.count) 个文件的识别"
+                        : "\(urls.count - failed) 个文件识别成功，\(failed) 个未识别"
+                    try? PersistenceController.shared.save(caseFile)
+                    isProcessing = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { statusMessage = nil }
+                }
             }
         }
         .sheet(isPresented: $showEvidenceEditor) {
@@ -219,6 +245,68 @@ struct CaseWorkbenchView: View {
         return pattern.matches(in: text, range: range).compactMap {
             Range($0.range, in: text).map { String(text[$0]) }
         }
+    }
+
+    // MARK: - File import → OCR
+
+    /// OCR an imported file (image, PDF, or plain text) into searchable text.
+    /// Runs on the global executor so Vision work stays off the main thread.
+    private static func recognizeText(from url: URL) async -> String {
+        guard url.startAccessingSecurityScopedResource() else { return "" }
+        defer { url.stopAccessingSecurityScopedResource() }
+
+        // Plain text files need no OCR
+        let ext = url.pathExtension.lowercased()
+        if ["txt", "text", "md", "csv"].contains(ext) {
+            return (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        }
+
+        // Render image/PDF pages to CGImage, then run Vision OCR
+        let collector = VisionEvidenceCollector()
+        var pages: [String] = []
+        for image in renderImages(from: url) {
+            if let result = try? await collector.recognizeText(in: image) {
+                pages.append(result.fullText)
+            }
+        }
+        return pages.filter { !$0.isEmpty }.joined(separator: "\n\n")
+    }
+
+    /// Render an image file or the pages of a PDF as CGImages.
+    /// Caller must hold the security-scoped resource access.
+    private static func renderImages(from url: URL) -> [CGImage] {
+        if url.pathExtension.lowercased() == "pdf" {
+            guard let document = CGPDFDocument(url as CFURL) else { return [] }
+            let pageCount = min(document.numberOfPages, 10)
+            var images: [CGImage] = []
+            for pageNumber in 1...pageCount {
+                guard let page = document.page(at: pageNumber) else { continue }
+                let box = page.getBoxRect(.mediaBox)
+                let scale: CGFloat = 2.0 // render at 2x for better OCR accuracy
+                let width = max(1, Int(box.width * scale))
+                let height = max(1, Int(box.height * scale))
+                guard let context = CGContext(
+                    data: nil, width: width, height: height,
+                    bitsPerComponent: 8, bytesPerRow: 0,
+                    space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                ) else { continue }
+                context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+                context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+                context.scaleBy(x: scale, y: scale)
+                context.translateBy(x: -box.origin.x, y: -box.origin.y)
+                context.drawPDFPage(page)
+                if let image = context.makeImage() { images.append(image) }
+            }
+            return images
+        }
+
+        // Raster images (PNG/JPG/HEIC/…) via ImageIO
+        if let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+           let image = CGImageSourceCreateImageAtIndex(source, 0, nil) {
+            return [image]
+        }
+        return []
     }
 }
 
