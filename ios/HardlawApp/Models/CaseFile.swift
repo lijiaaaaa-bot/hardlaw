@@ -5,8 +5,10 @@ import SwiftUI
 
 /// 一个劳动争议案件档案
 @Observable
-public final class CaseFile: Identifiable {
-    public let id: UUID
+public final class CaseFile: Identifiable, Hashable {
+    public static func == (lhs: CaseFile, rhs: CaseFile) -> Bool { lhs.id == rhs.id }
+    public func hash(into hasher: inout Hasher) { hasher.combine(id) }
+    public var id: UUID
     public var caseName: String           // 案由，如"拖欠工资、被迫解除劳动合同"
     public var applicant: String          // 申请人
     public var respondent: String         // 被申请人
@@ -48,7 +50,7 @@ public enum CaseStage: String, CaseIterable, Sendable {
 
 @Observable
 public final class ClaimItem: Identifiable {
-    public let id: UUID
+    public var id: UUID
     public var claimNumber: Int           // 请求序号
     public var content: String            // 请求内容
     public var legalBasis: String         // 法律依据
@@ -69,7 +71,7 @@ public final class ClaimItem: Identifiable {
 
 @Observable
 public final class EvidenceItem: Identifiable {
-    public let id: UUID
+    public var id: UUID
     public var group: String             // 组别
     public var number: Int               // 编号
     public var name: String              // 证据名称
@@ -129,7 +131,7 @@ public enum VerificationStatus: String, CaseIterable, Sendable {
 
 @Observable
 public final class GapItem: Identifiable {
-    public let id: UUID
+    public var id: UUID
     public var severity: GapSeverity
     public var description: String       // 缺口描述
     public var suggestedRemedy: String   // 补证建议

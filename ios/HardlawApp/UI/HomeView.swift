@@ -10,7 +10,6 @@ public struct HomeView: View {
     public var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // 信任声明
                 TrustBanner()
 
                 if cases.isEmpty {
@@ -24,12 +23,21 @@ public struct HomeView: View {
             .sheet(isPresented: $showNewCase) {
                 CaseIntakeView { newCase in
                     cases.append(newCase)
+                    try? PersistenceController.shared.save(newCase)
                     selectedCase = newCase
                     showNewCase = false
                 }
             }
-            .sheet(item: $selectedCase) { caseFile in
+            .navigationDestination(item: $selectedCase) { caseFile in
                 CaseWorkbenchView(caseFile: caseFile)
+                    .onDisappear {
+                        try? PersistenceController.shared.save(caseFile)
+                    }
+            }
+        }
+        .onAppear {
+            if let saved = try? PersistenceController.shared.loadAll() {
+                cases = saved
             }
         }
     }

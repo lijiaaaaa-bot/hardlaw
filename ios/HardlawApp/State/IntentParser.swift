@@ -79,15 +79,33 @@ public enum IntentParser {
 
 public enum IntentKind: String, Sendable {
     case importEvidence
-    case generateCatalog
-    case detectGaps
-    case verifyClaim
-    case verifyCitations
-    case checkConsistency
-    case computeSeverance
-    case fullReview
+    case generateCatalog       // needs LLM
+    case detectGaps            // local only
+    case verifyClaim           // needs LLM
+    case verifyCitations       // local only
+    case checkConsistency      // local only
+    case computeSeverance      // local only
+    case fullReview            // needs LLM
     case addFact
     case unparsed
+}
+
+/// Which execution backend to use.
+public enum ExecutionBackend: Sendable {
+    case local    // deterministic: snippet check, number match, gap detect
+    case llm      // needs cloud/on-device LLM: drafting, reasoning
+}
+
+public extension IntentKind {
+    var backend: ExecutionBackend {
+        switch self {
+        case .importEvidence, .addFact, .unparsed: return .local
+        case .detectGaps, .verifyCitations, .checkConsistency, .computeSeverance:
+            return .local
+        case .generateCatalog, .verifyClaim, .fullReview:
+            return .llm
+        }
+    }
 }
 
 public enum IntentScope: Sendable, Equatable {

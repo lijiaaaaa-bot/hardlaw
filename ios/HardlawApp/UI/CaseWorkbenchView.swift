@@ -12,8 +12,7 @@ struct CaseWorkbenchView: View {
     @State private var isProcessing = false
     @State private var expandedNeedsYou = false
     @State private var statusMessage: String?
-    @State private var showSourceView = false
-    @State private var sourceItem: EvidenceItem?
+    @State private var showFileImporter = false
 
     var body: some View {
         ScrollView {
@@ -60,7 +59,23 @@ struct CaseWorkbenchView: View {
         }
         .safeAreaInset(edge: .bottom) {
             CommandBar(text: $commandText, isProcessing: $isProcessing,
-                       placeholder: nextAction, onSubmit: handleCommand)
+                       placeholder: nextAction, onSubmit: handleCommand,
+                       onImport: { showFileImporter = true })
+        }
+        .sheet(item: $exportURL) { url in
+            ShareSheet(items: [url])
+        }
+        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.pdf, .image, .plainText],
+                      allowsMultipleSelection: true) { result in
+            if case .success(let urls) = result {
+                for url in urls {
+                    let item = EvidenceItem(number: caseFile.evidenceItems.count + 1,
+                                            name: url.lastPathComponent)
+                    caseFile.evidenceItems.append(item)
+                }
+                statusMessage = "已导入 \(urls.count) 个文件"
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { statusMessage = nil }
+            }
         }
         .sheet(isPresented: $showEvidenceEditor) {
             if let item = editingItem {
@@ -131,8 +146,16 @@ struct CaseWorkbenchView: View {
         return .drafting
     }
 
+    @State private var exportURL: URL?
+    @State private var showShareSheet = false
+
     func exportCatalog() {
-        // TODO: Generate Excel export
+        if let url = ExcelExport.exportCatalog(caseFile) {
+            exportURL = url
+            showShareSheet = true
+        } else {
+            statusMessage = "导出失败"
+        }
     }
 
     func verifySnippets() {
@@ -480,11 +503,12 @@ struct CommandBar: View {
     @Binding var isProcessing: Bool
     let placeholder: String
     let onSubmit: (String) -> Void
+    let onImport: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
-            Button {} label: {
-                Image(systemName: "camera.fill").font(.title3)
+            Button(action: onImport) {
+                Image(systemName: "doc.badge.plus").font(.title3)
             }
 
             HStack {
@@ -588,4 +612,18 @@ struct EvidenceEditorView: View {
             }
         }
     }
+}
+
+// MARK: - Share Sheet
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+extension URL: @retroactive Identifiable {
+    public var id: String { absoluteString }
 }
