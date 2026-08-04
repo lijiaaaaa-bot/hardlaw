@@ -123,12 +123,51 @@ struct CaseWorkbenchView: View {
 
     func handleCommand(_ text: String) {
         let intent = IntentParser.parse(text, stage: derivedStage)
-        let result = IntentHandler.handle(intent, caseFile: caseFile)
-        statusMessage = result.message
-        if result.action == .runAI { isProcessing = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+        isProcessing = true
+        let agent = LawAgent()
+
+        Task {
+            switch intent.kind {
+            case .generateCatalog, .fullReview:
+                await agent.fullReview(caseFile: caseFile) { p in
+                    statusMessage = "\(p.step) · \(p.detail)"
+                }
+                statusMessage = "完成：\(caseFile.evidenceItems.count) 项已处理"
+                try? PersistenceController.shared.save(caseFile)
+
+            case .detectGaps:
+                let gaps = await agent.detectGaps(caseFile: caseFile) { p in
+                    statusMessage = "\(p.step) · \(p.detail)"
+                }
+                for gap in gaps { caseFile.gaps.append(gap) }
+                statusMessage = gaps.isEmpty ? "未发现缺口" : "发现 \(gaps.count) 个缺口"
+                try? PersistenceController.shared.save(caseFile)
+
+            case .checkConsistency:
+                for item in caseFile.evidenceItems where !item.sourceOCRText.isEmpty {
+                    await agent.generateCatalogEntry(
+                        item: item, claimContext: caseFile.claims
+                    ) { p in statusMessage = "\(p.step) · \(p.detail)" }
+                }
+                statusMessage = "一致性检查完成"
+                try? PersistenceController.shared.save(caseFile)
+
+            case .verifyCitations:
+                verifySnippets()
+                statusMessage = "引用验证完成"
+
+            case .importEvidence, .addFact:
+                let result = IntentHandler.handle(intent, caseFile: caseFile)
+                statusMessage = result.message
+
+            default:
+                let result = IntentHandler.handle(intent, caseFile: caseFile)
+                statusMessage = result.message
+            }
+
+            try? PersistenceController.shared.save(caseFile)
             isProcessing = false
-            statusMessage = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { statusMessage = nil }
         }
     }
 
