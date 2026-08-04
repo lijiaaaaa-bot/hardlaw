@@ -1,158 +1,172 @@
 import SwiftUI
+import HardlawKit
 
-/// Main home screen with mode picker and backend selector.
+// MARK: - 首页：案件入口
+
 public struct HomeView: View {
-    @State private var viewModel = CourtViewModel()
-    @State private var showLiveModeration = false
-    @State private var showAudit = false
-    @State private var inputText = ""
+    @State private var showNewCase = false
+    @State private var cases: [CaseFile] = []
+    @State private var selectedCase: CaseFile?
 
     public var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Header
-                    VStack(spacing: 8) {
-                        Image(systemName: "building.columns.fill")
-                            .font(.system(size: 48))
-                            .foregroundStyle(.blue)
+            VStack(spacing: 0) {
+                // 信任声明
+                TrustBanner()
 
-                        Text("Hardlaw")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-
-                        Text("On-Device AI Compliance Court")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.top, 20)
-
-                    // Backend selector
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label("Judge Backend", systemImage: "brain.head.profile")
-                            .font(.headline)
-                        Picker("Backend", selection: $viewModel.selectedBackend) {
-                            ForEach(CourtViewModel.Backend.allCases, id: \.self) { backend in
-                                Text(backend.rawValue).tag(backend)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                    }
-                    .padding(.horizontal)
-
-                    // Mode cards
-                    VStack(spacing: 16) {
-                        // Live Moderation
-                        Button {
-                            showLiveModeration = true
-                        } label: {
-                            ModeCard(
-                                icon: "waveform.circle.fill",
-                                title: "Live Moderation",
-                                subtitle: "Real-time rule-based scanning",
-                                color: .green,
-                                description: "Camera feed analyzed frame-by-frame with deterministic regex rules. Instant results, no network."
-                            )
-                        }
-                        .buttonStyle(.plain)
-
-                        // Text Audit
-                        NavigationLink {
-                            AuditResultView(viewModel: viewModel, mode: .text(""))
-                        } label: {
-                            ModeCard(
-                                icon: "doc.text.magnifyingglass",
-                                title: "Text Audit",
-                                subtitle: "Full Court procedure",
-                                color: .blue,
-                                description: "Submit text for complete judicial review. Evidence collection, judgment, and verdict."
-                            )
-                        }
-                        .buttonStyle(.plain)
-
-                        // Photo Audit
-                        NavigationLink {
-                            AuditResultView(viewModel: viewModel, mode: .photoPicker)
-                        } label: {
-                            ModeCard(
-                                icon: "camera.viewfinder",
-                                title: "Photo Audit",
-                                subtitle: "OCR + Court procedure",
-                                color: .orange,
-                                description: "Capture or select a photo. Vision extracts text as evidence, then the Court judges it."
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.horizontal)
-
-                    // Statute summary
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label("Active Statutes", systemImage: "list.clipboard.fill")
-                            .font(.headline)
-                        ForEach(ContentModerationStatutes.all, id: \.name) { statute in
-                            HStack {
-                                Text(statute.name)
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                                Spacer()
-                                Text(statute.blocking ? "Blocking" : "Non-blocking")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(.quaternary, in: Capsule())
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 4)
-                        }
-                    }
-                    .padding(.horizontal)
+                if cases.isEmpty {
+                    EmptyCaseView(onNewCase: { showNewCase = true })
+                } else {
+                    CaseListView(cases: cases, onSelect: { selectedCase = $0 }, onNewCase: { showNewCase = true })
                 }
             }
-            .navigationBarHidden(true)
-            .fullScreenCover(isPresented: $showLiveModeration) {
-                LiveModerationView(viewModel: viewModel)
+            .navigationTitle("证据链核查")
+            .navigationBarTitleDisplayMode(.large)
+            .sheet(isPresented: $showNewCase) {
+                CaseIntakeView { newCase in
+                    cases.append(newCase)
+                    selectedCase = newCase
+                    showNewCase = false
+                }
+            }
+            .sheet(item: $selectedCase) { caseFile in
+                CaseWorkbenchView(caseFile: caseFile)
             }
         }
     }
 }
 
-// MARK: - Mode Card
+// MARK: - 信任声明
 
-struct ModeCard: View {
-    let icon: String
-    let title: String
-    let subtitle: String
-    let color: Color
-    let description: String
+struct TrustBanner: View {
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "lock.shield.fill")
+                .foregroundStyle(.green)
+            Text("所有分析在手机本地完成，证据不离开设备。引用内容必须与原文逐字一致。")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.green.opacity(0.06))
+    }
+}
+
+// MARK: - 空状态
+
+struct EmptyCaseView: View {
+    let onNewCase: () -> Void
 
     var body: some View {
-        HStack(spacing: 16) {
-            Image(systemName: icon)
-                .font(.system(size: 32))
-                .foregroundStyle(color)
-                .frame(width: 44)
+        VStack(spacing: 24) {
+            Spacer()
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.headline)
-                Text(subtitle)
-                    .font(.caption)
+            Image(systemName: "doc.text.magnifyingglass")
+                .font(.system(size: 64))
+                .foregroundStyle(.blue.opacity(0.6))
+
+            VStack(spacing: 8) {
+                Text("证据链核查工作台")
+                    .font(.title2).fontWeight(.bold)
+                Text("新建劳动争议案件，自动生成证据目录、\n检测证据缺口、验证引用一致性")
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
-                Text(description)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
             }
+
+            Button(action: onNewCase) {
+                Label("新建案件", systemImage: "plus.rectangle.fill")
+                    .font(.headline)
+                    .frame(maxWidth: 200)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
 
             Spacer()
 
-            Image(systemName: "chevron.right")
-                .font(.caption)
-                .foregroundStyle(.quaternary)
+            // 能力展示
+            VStack(spacing: 12) {
+                CapabilityRow(icon: "text.viewfinder", text: "拍照或导入证据，OCR 提取文字")
+                CapabilityRow(icon: "list.clipboard", text: "自动生成七列证据目录，可逐条编辑")
+                CapabilityRow(icon: "exclamationmark.shield", text: "逐字验证引用内容是否真实存在于源文件")
+                CapabilityRow(icon: "sparkle.magnifyingglass", text: "自动发现证据缺口并给出补证建议")
+            }
+            .padding(.bottom, 40)
         }
         .padding()
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+struct CapabilityRow: View {
+    let icon: String; let text: String
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .frame(width: 24)
+                .foregroundStyle(.blue)
+            Text(text).font(.callout).foregroundStyle(.secondary)
+            Spacer()
+        }
+    }
+}
+
+// MARK: - 案件列表
+
+struct CaseListView: View {
+    let cases: [CaseFile]
+    let onSelect: (CaseFile) -> Void
+    let onNewCase: () -> Void
+
+    var body: some View {
+        List {
+            Section("案件列表") {
+                ForEach(cases) { caseFile in
+                    Button { onSelect(caseFile) } label: {
+                        CaseRow(caseFile: caseFile)
+                    }
+                }
+            }
+        }
+        .toolbar {
+            Button(action: onNewCase) {
+                Image(systemName: "plus")
+            }
+        }
+    }
+}
+
+struct CaseRow: View {
+    let caseFile: CaseFile
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(caseFile.caseName.isEmpty ? "未命名案件" : caseFile.caseName)
+                    .font(.headline)
+                Spacer()
+                Text(caseFile.stage.rawValue)
+                    .font(.caption)
+                    .padding(.horizontal, 8).padding(.vertical, 2)
+                    .background(stageColor.opacity(0.12), in: Capsule())
+                    .foregroundStyle(stageColor)
+            }
+            HStack {
+                Text("申请人: \(caseFile.applicant)")
+                Text("被申请人: \(caseFile.respondent)")
+            }
+            .font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
+    }
+
+    var stageColor: Color {
+        switch caseFile.stage {
+        case .drafting: return .gray
+        case .evidenceCollection: return .blue
+        case .catalogReview: return .orange
+        case .gapResolution: return .red
+        case .readyToFile: return .green
+        }
     }
 }
