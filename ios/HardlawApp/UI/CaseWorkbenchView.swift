@@ -1,76 +1,124 @@
 import SwiftUI
 import HardlawKit
 
-/// 案件工作台 — 证据目录 + Gap 报告 + 导出
+// MARK: - 案件看板（单一滚动视图，替代 TabView）
+
 struct CaseWorkbenchView: View {
     @Bindable var caseFile: CaseFile
     @Environment(\.dismiss) private var dismiss
-    @State private var selectedTab = 0
     @State private var showEvidenceEditor = false
     @State private var editingItem: EvidenceItem?
+    @State private var commandText = ""
+    @State private var isProcessing = false
+    @State private var expandedNeedsYou = false
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            // Tab 1: 证据目录
-            EvidenceListView(caseFile: caseFile, onAddEvidence: {
-                let newItem = EvidenceItem(number: caseFile.evidenceItems.count + 1)
-                caseFile.evidenceItems.append(newItem)
-                editingItem = newItem
-                showEvidenceEditor = true
-            }, onEdit: { item in
-                editingItem = item
-                showEvidenceEditor = true
-            })
-            .tabItem { Label("证据目录", systemImage: "list.clipboard") }
-            .tag(0)
+        ScrollView {
+            VStack(spacing: 0) {
+                CaseHeader(caseFile: caseFile)
 
-            // Tab 2: Gap 报告
-            GapReportView(caseFile: caseFile)
-                .tabItem { Label("待核实 (\(caseFile.gaps.count))", systemImage: "exclamationmark.triangle") }
-                .tag(1)
+                if !activeItems.isEmpty {
+                    NeedsYouSection(
+                        items: activeItems,
+                        expanded: $expandedNeedsYou,
+                        onTap: handleNeedsYouTap
+                    )
+                }
 
-            // Tab 3: 导出
-            ExportView(caseFile: caseFile)
-                .tabItem { Label("导出", systemImage: "square.and.arrow.up") }
-                .tag(2)
+                ClaimsSection(caseFile: caseFile)
+
+                EvidenceSection(
+                    caseFile: caseFile,
+                    onAdd: { addNewEvidence() },
+                    onEdit: { item in editingItem = item; showEvidenceEditor = true }
+                )
+
+                ActivitySection(caseFile: caseFile)
+
+                // Spacer so command bar clears content
+                Color.clear.frame(height: 80)
+            }
         }
-        .navigationTitle(caseFile.caseName)
+        .navigationTitle(caseFile.caseName.isEmpty ? "未命名案件" : caseFile.caseName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                HStack(spacing: 4) {
-                    // 阶段指示器
-                    Text("步骤 \(caseFile.stage.rawValue)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Button("完成") { dismiss() }
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button { addNewEvidence() } label: {
+                        Label("添加证据", systemImage: "plus.rectangle")
+                    }
+                    Button { exportCatalog() } label: {
+                        Label("导出目录", systemImage: "square.and.arrow.up")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
             }
+        }
+        .safeAreaInset(edge: .bottom) {
+            CommandBar(text: $commandText, isProcessing: $isProcessing,
+                       placeholder: nextAction, onSubmit: handleCommand)
         }
         .sheet(isPresented: $showEvidenceEditor) {
             if let item = editingItem {
                 EvidenceEditorView(item: item)
             }
         }
-        .onAppear {
-            verifySnippets()
+        .onAppear { verifySnippets() }
+    }
+
+    // MARK: - Derived state
+
+    var nextAction: String {
+        if caseFile.evidenceItems.isEmpty { return "描述案情，或点 + 添加第一份证据" }
+        let stale = caseFile.evidenceItems.filter { $0.proofContentState.stale }.count
+        if stale > 0 { return "\(stale) 项待更新 — 输入「全面复核」" }
+        let unverified = caseFile.evidenceItems.filter { $0.proofContentState.status == .machineDraft }.count
+        if unverified > 0 { return "\(unverified) 项待核实确认" }
+        return "输入指令 · 或点 + 添加证据"
+    }
+
+    var activeItems: [NeedsYouItem] {
+        var items: [NeedsYouItem] = []
+        for item in caseFile.evidenceItems where item.proofContentState.needsAttention {
+            items.append(NeedsYouItem(kind: .needsReview,
+                title: "证据\(item.number) 待核实", detail: item.name,
+                action: { editingItem = item; showEvidenceEditor = true }))
+        }
+        for gap in caseFile.gaps where !gap.isResolved {
+            items.append(NeedsYouItem(kind: .gap, title: gap.description,
+                detail: gap.suggestedRemedy, action: { /* TODO: focus gap */ }))
+        }
+        return items
+    }
+
+    // MARK: - Actions
+
+    func addNewEvidence() {
+        let item = EvidenceItem(number: caseFile.evidenceItems.count + 1)
+        caseFile.evidenceItems.append(item)
+        editingItem = item
+        showEvidenceEditor = true
+    }
+
+    func handleNeedsYouTap(_ item: NeedsYouItem) { item.action() }
+
+    func handleCommand(_ text: String) {
+        isProcessing = true
+        // TODO: IntentParser → ProcedureResolver → run AI
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            isProcessing = false
         }
     }
 
-    /// Mark a catalog item as human-reviewed.
-    private func confirmItem(_ item: EvidenceItem) {
-        item.humanReviewed = true
-        item.proofContentState.confirm()
-        item.proofPurposeState.confirm()
+    func exportCatalog() {
+        // TODO: Generate Excel export
     }
 
-    /// Run snippet-based verification (never auto-stamps; shows provenance to human).
-    private func verifySnippets() {
+    func verifySnippets() {
         var validator = EvidenceValidator()
-        for item in caseFile.evidenceItems {
-            if !item.sourceOCRText.isEmpty {
-                validator.addSource("evidence_\(item.number)", item.sourceOCRText)
-            }
+        for item in caseFile.evidenceItems where !item.sourceOCRText.isEmpty {
+            validator.addSource("evidence_\(item.number)", item.sourceOCRText)
         }
         for item in caseFile.evidenceItems {
             guard !item.sourceOCRText.isEmpty else { continue }
@@ -79,14 +127,11 @@ struct CaseWorkbenchView: View {
             for num in numbers {
                 if !item.sourceOCRText.contains(num) { allMatch = false; break }
             }
-            // Never auto-stamp green. Mark stale if numbers don't match.
-            if !allMatch {
-                item.proofContentState.stale = true
-            }
+            if !allMatch { item.proofContentState.stale = true }
         }
     }
 
-    private func extractKeyNumbers(from text: String) -> [String] {
+    func extractKeyNumbers(from text: String) -> [String] {
         let pattern = try! NSRegularExpression(pattern: #"\d+\.?\d*"#)
         let range = NSRange(text.startIndex..., in: text)
         return pattern.matches(in: text, range: range).compactMap {
@@ -95,40 +140,211 @@ struct CaseWorkbenchView: View {
     }
 }
 
-// MARK: - 证据目录列表
+// MARK: - NeedsYouItem
 
-struct EvidenceListView: View {
+struct NeedsYouItem: Identifiable {
+    let id = UUID()
+    enum Kind { case gap, needsReview, conflict }
+    var kind: Kind
+    var title: String
+    var detail: String
+    var action: () -> Void
+}
+
+// MARK: - Case Header
+
+struct CaseHeader: View {
     @Bindable var caseFile: CaseFile
-    let onAddEvidence: () -> Void
+
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Text(caseFile.caseName.isEmpty ? "未命名案件" : caseFile.caseName)
+                    .font(.title3).fontWeight(.bold)
+                Spacer()
+                StageChip(stage: derivedStage)
+            }
+
+            HStack {
+                Label(caseFile.applicant, systemImage: "person.fill")
+                Text("v.")
+                Label(caseFile.respondent, systemImage: "building.2.fill")
+                Spacer()
+            }
+            .font(.caption).foregroundStyle(.secondary)
+
+            Divider().padding(.top, 4)
+        }
+        .padding(.horizontal).padding(.top, 8)
+    }
+
+    var derivedStage: CaseStage {
+        if caseFile.evidenceItems.isEmpty && caseFile.claims.isEmpty { return .drafting }
+        let allDrafted = caseFile.evidenceItems.allSatisfy {
+            ($0.proofContentState.displayValue?.isEmpty == false) && !$0.proofContentState.stale
+        }
+        if !allDrafted && !caseFile.evidenceItems.isEmpty { return .evidenceCollection }
+        let unresolved = caseFile.gaps.filter { !$0.isResolved }.count
+        if unresolved > 0 { return .gapResolution }
+        let allReviewed = caseFile.evidenceItems.allSatisfy { $0.humanReviewed }
+        if !allReviewed && !caseFile.evidenceItems.isEmpty { return .catalogReview }
+        if !caseFile.evidenceItems.isEmpty { return .readyToFile }
+        return .drafting
+    }
+}
+
+struct StageChip: View {
+    let stage: CaseStage
+    var body: some View {
+        Text(stage.rawValue)
+            .font(.caption).padding(.horizontal, 8).padding(.vertical, 3)
+            .background(color.opacity(0.12), in: Capsule()).foregroundStyle(color)
+    }
+    var color: Color {
+        switch stage {
+        case .drafting: return .gray; case .evidenceCollection: return .blue
+        case .catalogReview: return .orange; case .gapResolution: return .red
+        case .readyToFile: return .green
+        }
+    }
+}
+
+// MARK: - NeedsYou Section
+
+struct NeedsYouSection: View {
+    let items: [NeedsYouItem]
+    @Binding var expanded: Bool
+
+    let onTap: (NeedsYouItem) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Button { withAnimation { expanded.toggle() } } label: {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    Text("待办 · \(items.count) 项").font(.subheadline).fontWeight(.semibold)
+                    Spacer()
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down").font(.caption)
+                }
+                .padding(.horizontal).padding(.vertical, 10)
+                .background(.orange.opacity(0.06))
+            }
+            .buttonStyle(.plain)
+
+            if expanded {
+                VStack(spacing: 6) {
+                    ForEach(items) { item in
+                        Button { onTap(item) } label: {
+                            NeedsYouRow(item: item)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal).padding(.bottom, 8)
+                .background(.orange.opacity(0.03))
+            }
+        }
+    }
+}
+
+struct NeedsYouRow: View {
+    let item: NeedsYouItem
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: item.kind == .conflict ? "xmark.shield.fill" :
+                  item.kind == .gap ? "exclamationmark.triangle" : "eye")
+                .font(.caption).foregroundStyle(item.kind == .conflict ? .red : .orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.title).font(.callout)
+                if !item.detail.isEmpty {
+                    Text(item.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            Spacer()
+            Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.quaternary)
+        }
+        .padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+// MARK: - Claims Section
+
+struct ClaimsSection: View {
+    @Bindable var caseFile: CaseFile
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionHeader(title: "仲裁请求", count: caseFile.claims.count,
+                          icon: "list.number")
+            if caseFile.claims.isEmpty {
+                Text("暂无请求 — 输入指令让 AI 草拟").font(.caption).foregroundStyle(.tertiary)
+                    .padding(.horizontal)
+            } else {
+                ForEach(caseFile.claims) { claim in
+                    ClaimCard(claim: claim)
+                        .padding(.horizontal)
+                }
+            }
+        }
+        .padding(.vertical, 8)
+    }
+}
+
+struct ClaimCard: View {
+    let claim: ClaimItem
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("请求 \(claim.claimNumber)").font(.caption).foregroundStyle(.blue)
+                Spacer()
+            }
+            Text(claim.content).font(.subheadline)
+            if !claim.legalBasis.isEmpty {
+                Text(claim.legalBasis).font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .padding(10).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+// MARK: - Evidence Section
+
+struct EvidenceSection: View {
+    @Bindable var caseFile: CaseFile
+    let onAdd: () -> Void
     let onEdit: (EvidenceItem) -> Void
 
     var body: some View {
-        List {
-            // 概览
-            Section {
-                HStack {
-                    StatBadge(label: "证据总数", value: "\(caseFile.evidenceItems.count)")
-                    StatBadge(label: "原件", value: "\(caseFile.evidenceItems.filter(\.isOriginal).count)")
-                    StatBadge(label: "已核实", value: "\(caseFile.evidenceItems.filter { $0.verificationStatus == .verified }.count)")
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                SectionHeader(title: "证据目录", count: caseFile.evidenceItems.count,
+                              icon: "list.clipboard")
+                Spacer()
+                Button(action: onAdd) {
+                    Image(systemName: "plus.circle.fill").font(.title3)
                 }
             }
+            .padding(.horizontal)
 
-            // 按组别分组显示
+            if caseFile.evidenceItems.isEmpty {
+                Text("点击 + 添加证据，或拖入文件").font(.caption).foregroundStyle(.tertiary)
+                    .padding(.horizontal)
+            }
+
             ForEach(groups, id: \.self) { group in
-                Section(group) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(group).font(.caption).fontWeight(.medium)
+                        .foregroundStyle(.secondary).padding(.horizontal)
                     ForEach(caseFile.evidenceItems.filter { $0.group == group }) { item in
-                        EvidenceRow(item: item, onEdit: { onEdit(item) })
+                        Button { onEdit(item) } label: {
+                            EvidenceCard(item: item)
+                        }
+                        .buttonStyle(.plain).padding(.horizontal)
                     }
                 }
             }
         }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button(action: onAddEvidence) {
-                    Image(systemName: "plus")
-                }
-            }
-        }
+        .padding(.vertical, 8)
     }
 
     var groups: [String] {
@@ -137,81 +353,150 @@ struct EvidenceListView: View {
     }
 }
 
-struct StatBadge: View {
-    let label: String; let value: String
-    var body: some View {
-        VStack(spacing: 2) {
-            Text(value).font(.title3).fontWeight(.bold)
-            Text(label).font(.caption2).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-    }
-}
-
-struct EvidenceRow: View {
+struct EvidenceCard: View {
     let item: EvidenceItem
-    let onEdit: () -> Void
-
     var body: some View {
-        Button(action: onEdit) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("编号 \(item.number)")
-                        .font(.caption).foregroundStyle(.blue)
-                    Spacer()
-                    VerificationBadge(status: item.verificationStatus)
-                }
-                Text(item.name)
-                    .font(.subheadline).fontWeight(.medium)
-                if !item.proofContent.isEmpty {
-                    Text(item.proofContent).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                }
-                if !item.proofPurpose.isEmpty {
-                    Text("证明目的：\(item.proofPurpose)")
-                        .font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
-                }
-                HStack(spacing: 8) {
-                    Label(item.isOriginal ? "原件" : "复印件", systemImage: item.isOriginal ? "doc.fill" : "doc")
-                    Label("\(item.pageCount)页", systemImage: "text.page")
-                }
-                .font(.caption2).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("编号 \(item.number)").font(.caption).foregroundStyle(.blue)
+                Spacer()
+                EvidenceStatusChip(item: item)
             }
-            .padding(.vertical, 4)
+            Text(item.name).font(.subheadline).fontWeight(.medium)
+            if let content = item.proofContentState.displayValue, !content.isEmpty {
+                Text(content).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            }
+            HStack(spacing: 8) {
+                Label(item.isOriginal ? "原件" : "复印件",
+                      systemImage: item.isOriginal ? "doc.fill" : "doc")
+                Label("\(item.pageCount)页", systemImage: "text.page")
+                if !item.sourceOCRText.isEmpty {
+                    Label("有源文件", systemImage: "text.viewfinder")
+                        .foregroundStyle(.green)
+                }
+            }
+            .font(.caption2).foregroundStyle(.secondary)
         }
+        .padding(10).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
-struct VerificationBadge: View {
-    let status: VerificationStatus
+struct EvidenceStatusChip: View {
+    let item: EvidenceItem
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon)
-            Text(status.rawValue)
+        HStack(spacing: 3) {
+            Image(systemName: icon).font(.caption2)
+            Text(label).font(.caption2)
         }
-        .font(.caption2)
         .padding(.horizontal, 6).padding(.vertical, 2)
-        .background(color.opacity(0.12), in: Capsule())
-        .foregroundStyle(color)
+        .background(color.opacity(0.12), in: Capsule()).foregroundStyle(color)
     }
     var icon: String {
-        switch status {
-        case .unverified: return "circle"
-        case .verified: return "checkmark.circle.fill"
-        case .inconsistent: return "exclamationmark.triangle.fill"
-        case .needsReview: return "eye"
-        }
+        if item.humanReviewed { return "checkmark.shield.fill" }
+        if item.proofContentState.stale { return "exclamationmark.triangle.fill" }
+        if item.proofContentState.status == .machineDraft { return "circle.dotted" }
+        return "circle"
+    }
+    var label: String {
+        if item.humanReviewed { return "已确认" }
+        if item.proofContentState.stale { return "待更新" }
+        if item.proofContentState.status == .machineDraft { return "AI草稿" }
+        return "待核实"
     }
     var color: Color {
-        switch status {
-        case .unverified: return .gray
-        case .verified: return .green
-        case .inconsistent: return .orange
-        case .needsReview: return .blue
+        if item.humanReviewed { return .green }
+        if item.proofContentState.stale { return .orange }
+        if item.proofContentState.status == .machineDraft { return .blue }
+        return .gray
+    }
+}
+
+// MARK: - Activity Section
+
+struct ActivitySection: View {
+    let caseFile: CaseFile
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            SectionHeader(title: "最近动态", count: nil, icon: "clock.arrow.circlepath")
+                .padding(.horizontal)
+            Text(activitySummary)
+                .font(.caption).foregroundStyle(.tertiary)
+                .padding(.horizontal)
+        }
+        .padding(.vertical, 8)
+    }
+
+    var activitySummary: String {
+        let total = caseFile.evidenceItems.count
+        let reviewed = caseFile.evidenceItems.filter(\.humanReviewed).count
+        if total == 0 { return "尚无活动" }
+        return "\(total) 项证据 · \(reviewed) 项已确认"
+    }
+}
+
+// MARK: - Shared components
+
+struct SectionHeader: View {
+    let title: String
+    let count: Int?
+    let icon: String
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon).foregroundStyle(.blue)
+            Text(title).font(.headline)
+            if let count {
+                Text("\(count)").font(.caption).foregroundStyle(.secondary)
+                    .padding(.horizontal, 4).padding(.vertical, 1)
+                    .background(.quaternary, in: Capsule())
+            }
         }
     }
 }
 
-// MARK: - 证据编辑
+// MARK: - Command Bar
+
+struct CommandBar: View {
+    @Binding var text: String
+    @Binding var isProcessing: Bool
+    let placeholder: String
+    let onSubmit: (String) -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button {} label: {
+                Image(systemName: "camera.fill").font(.title3)
+            }
+
+            HStack {
+                if isProcessing {
+                    ProgressView().scaleEffect(0.7).padding(.leading, 4)
+                }
+                TextField(placeholder, text: $text)
+                    .font(.callout)
+                    .onSubmit {
+                        guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                        onSubmit(text)
+                        text = ""
+                    }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(.regularMaterial, in: Capsule())
+
+            Button {
+                guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                onSubmit(text)
+                text = ""
+            } label: {
+                Image(systemName: "arrow.up.circle.fill").font(.title3)
+            }
+            .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+        .padding(.horizontal).padding(.vertical, 6)
+        .background(.ultraThinMaterial)
+    }
+}
+
+// MARK: - Evidence Editor (unchanged from v2)
 
 struct EvidenceEditorView: View {
     @Bindable var item: EvidenceItem
@@ -228,12 +513,20 @@ struct EvidenceEditorView: View {
                     Stepper("页码: \(item.pageCount)", value: $item.pageCount, in: 1...999)
                 }
 
-                Section("证明内容（AI 可辅助生成）") {
+                Section("证明内容") {
                     TextEditor(text: Binding(
                         get: { item.proofContentState.displayValue ?? "" },
                         set: { item.proofContentState.override(with: $0) }
                     ))
                     .frame(minHeight: 100).font(.callout)
+                    if item.proofContentState.status == .machineDraft {
+                        Label("AI 草稿，请核实后确认", systemImage: "info.circle")
+                            .font(.caption).foregroundStyle(.blue)
+                    }
+                    if item.humanReviewed {
+                        Label("已逐项核对确认", systemImage: "checkmark.shield.fill")
+                            .font(.caption).foregroundStyle(.green)
+                    }
                 }
 
                 Section("证明目的") {
@@ -244,17 +537,26 @@ struct EvidenceEditorView: View {
                     .frame(minHeight: 80).font(.callout)
                 }
 
-                Section("源文件 OCR 文字") {
+                Section("源文件 OCR") {
                     if item.sourceOCRText.isEmpty {
-                        Text("尚未导入源文件。点击下方按钮拍照或选择图片导入。")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        Text("尚未导入源文件").font(.caption).foregroundStyle(.secondary)
                     } else {
-                        Text(item.sourceOCRText)
-                            .font(.caption).foregroundStyle(.secondary)
-                            .lineLimit(10)
+                        Text(item.sourceOCRText).font(.caption).foregroundStyle(.secondary).lineLimit(10)
                     }
-                    // TODO: PhotosPicker integration for OCR
+                }
+
+                Section {
+                    Button {
+                        item.humanReviewed = true
+                        item.proofContentState.confirm()
+                        item.proofPurposeState.confirm()
+                        dismiss()
+                    } label: {
+                        Label("我已逐项核对，确认与原件一致", systemImage: "checkmark.shield.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(item.proofContentState.displayValue?.isEmpty != false)
                 }
             }
             .navigationTitle("编辑证据")
@@ -262,128 +564,6 @@ struct EvidenceEditorView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成") { dismiss() }
-                }
-            }
-        }
-    }
-}
-
-// MARK: - Gap 报告
-
-struct GapReportView: View {
-    @Bindable var caseFile: CaseFile
-
-    var body: some View {
-        List {
-            if caseFile.gaps.isEmpty {
-                Section {
-                    VStack(spacing: 12) {
-                        Image(systemName: "checkmark.shield.fill")
-                            .font(.system(size: 40)).foregroundStyle(.green)
-                        Text("暂未发现证据缺口")
-                            .font(.headline)
-                        Text("添加更多证据后，系统将自动检测不一致和缺失项")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity).padding(.vertical, 20)
-                }
-            } else {
-                ForEach(caseFile.gaps) { gap in
-                    GapRow(gap: gap)
-                        .swipeActions(edge: .trailing) {
-                            Button { gap.isResolved = true } label: {
-                                Label("已解决", systemImage: "checkmark")
-                            }
-                            .tint(.green)
-                        }
-                }
-            }
-        }
-    }
-}
-
-struct GapRow: View {
-    @Bindable var gap: GapItem
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                GapSeverityBadge(severity: gap.severity)
-                Spacer()
-                if gap.isResolved {
-                    Text("已解决").font(.caption).foregroundStyle(.green)
-                }
-            }
-            Text(gap.description).font(.subheadline)
-            if !gap.suggestedRemedy.isEmpty {
-                HStack(alignment: .top, spacing: 4) {
-                    Text("补证建议：").font(.caption).fontWeight(.medium).foregroundStyle(.blue)
-                    Text(gap.suggestedRemedy).font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            if !gap.relatedClaim.isEmpty {
-                Text("关联请求：\(gap.relatedClaim)")
-                    .font(.caption2).foregroundStyle(.tertiary)
-            }
-        }
-        .padding(.vertical, 4)
-        .opacity(gap.isResolved ? 0.5 : 1)
-    }
-}
-
-struct GapSeverityBadge: View {
-    let severity: GapSeverity
-    var body: some View {
-        Text(severity.rawValue)
-            .font(.caption2).fontWeight(.bold)
-            .padding(.horizontal, 6).padding(.vertical, 2)
-            .background(color.opacity(0.15), in: Capsule())
-            .foregroundStyle(color)
-    }
-    var color: Color {
-        switch severity {
-        case .critical: return .red
-        case .high: return .orange
-        case .medium: return .yellow
-        case .low: return .gray
-        }
-    }
-}
-
-// MARK: - 导出
-
-struct ExportView: View {
-    let caseFile: CaseFile
-
-    var body: some View {
-        List {
-            Section("证据目录导出") {
-                ExportButton(title: "导出为 Excel 表格", icon: "tablecells", description: "七列证据目录，可直接提交仲裁委")
-                ExportButton(title: "导出证据目录 + 待核实清单", icon: "doc.richtext", description: "包含所有证据项、验证状态和补证建议")
-            }
-            Section("案件摘要") {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("案由：\(caseFile.caseName)").font(.callout)
-                    Text("申请人：\(caseFile.applicant)").font(.callout)
-                    Text("被申请人：\(caseFile.respondent)").font(.callout)
-                    Text("仲裁请求：\(caseFile.claims.count) 项").font(.callout)
-                    Text("证据：\(caseFile.evidenceItems.count) 项，\(caseFile.gaps.count) 个待核实问题").font(.callout)
-                }
-            }
-        }
-        .navigationTitle("导出")
-    }
-}
-
-struct ExportButton: View {
-    let title: String; let icon: String; let description: String
-    var body: some View {
-        Button {} label: {
-            HStack {
-                Image(systemName: icon).font(.title2).foregroundStyle(.blue)
-                VStack(alignment: .leading) {
-                    Text(title).font(.callout)
-                    Text(description).font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
