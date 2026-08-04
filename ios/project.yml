@@ -47,8 +47,6 @@ targets:
     info:
       path: HardlawApp/Info.plist
       properties:
-        NSCameraUsageDescription: "Hardlaw uses the camera to audit content for policy compliance in real time. All processing is performed on-device."
-        NSPhotoLibraryUsageDescription: "Hardlaw needs access to your photo library to audit images for policy compliance."
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

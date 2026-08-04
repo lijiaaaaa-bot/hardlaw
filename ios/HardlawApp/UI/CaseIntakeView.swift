@@ -8,7 +8,6 @@ struct CaseIntakeView: View {
     @State private var applicant = ""
     @State private var respondent = ""
     @State private var claims: [ClaimDraft] = [ClaimDraft(number: 1)]
-    @State private var showLawPicker = false
 
     let onSave: (CaseFile) -> Void
 
@@ -98,19 +97,8 @@ struct CaseIntakeView: View {
                                     .foregroundStyle(.secondary)
                             }
 
-                            if claim.content.lowercased().contains("支付") || claim.content.contains("赔偿") || claim.content.contains("工资") {
-                                HStack {
-                                    Text("涉及金额（选填）")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    TextField("金额", value: $claim.amount, format: .number)
-                                        .keyboardType(.decimalPad)
-                                        .font(.callout)
-                                    Text("元")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
+
+
                         }
                         .padding(.vertical, 4)
                     }
@@ -144,8 +132,7 @@ struct CaseIntakeView: View {
                                 return ClaimItem(
                                     claimNumber: draft.number,
                                     content: draft.content,
-                                    legalBasis: draft.legalBasis,
-                                    amount: draft.amount
+                                    legalBasis: draft.legalBasis
                                 )
                             }
                         )
@@ -166,7 +153,6 @@ class ClaimDraft: Identifiable {
     var number: Int
     var content = ""
     var legalBasis = ""
-    var amount: Double? = nil
 
     init(number: Int) {
         self.number = number

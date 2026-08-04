@@ -18,34 +18,36 @@ final class RuleBasedLLMTests: XCTestCase {
         XCTAssertEqual(verdict.findings.count, 0, "Clean content should have no findings")
     }
 
-    func testBanListHit() async throws {
-        let llm = RuleBasedLLM(rules: RuleBasedLLM.defaultRules())
+    func testAmountMismatchHit() async throws {
+        let llm = RuleBasedLLM(rules: [
+            try! RuleBasedLLM.Rule(violationName: "amount_mismatch", pattern: #"\d+\.?\d*\s*元"#, severity: "high"),
+        ])
         let prompt = """
         ## CASE DATA
         ### content
-        this contains a damn bad word
+        工资标准为 7550元每月
         """
         let result = try await llm.judge(prompt)
         let verdict = VerdictParser.parse(result)
-        XCTAssertTrue(verdict.refuted, "Content with banned term should be refuted")
+        XCTAssertTrue(verdict.refuted, "Content with amount pattern should be refuted")
         XCTAssertFalse(verdict.findings.isEmpty, "Should have findings")
-        // Verify evidence refs have snippets
         XCTAssertTrue(verdict.evidenceRefs.allSatisfy { !$0.snippet.isEmpty },
                       "All evidence refs should have non-empty snippets")
     }
 
-    func testPIILeakDetection() async throws {
-        let llm = RuleBasedLLM(rules: RuleBasedLLM.defaultRules())
+    func testMultipleAmounts() async throws {
+        let llm = RuleBasedLLM(rules: [
+            try! RuleBasedLLM.Rule(violationName: "amount", pattern: #"\d+\.?\d*\s*元"#, severity: "low"),
+        ])
         let prompt = """
         ## CASE DATA
         ### content
-        user email is test@example.com and phone 555-123-4567
+        应发工资7550元，实发7450元，公积金基数7554元
         """
         let result = try await llm.judge(prompt)
         let verdict = VerdictParser.parse(result)
-        // PII patterns matches email and phone → refuted
-        XCTAssertTrue(verdict.refuted, "PII content should be refuted")
-        XCTAssertTrue(verdict.findings.count >= 1, "Should find at least email PII")
+        XCTAssertTrue(verdict.refuted, "Three amounts should be detected")
+        XCTAssertEqual(verdict.findings.count, 3, "Should find 3 amount matches")
     }
 
     func testCustomRules() async throws {
@@ -69,22 +71,22 @@ final class RuleBasedLLMTests: XCTestCase {
     // MARK: - Evidence Verifiability
 
     func testRuleBasedEvidenceIsVerifiable() async throws {
-        // RuleBasedLLM uses actual content substrings as snippets → always verifiable
-        let llm = RuleBasedLLM(rules: RuleBasedLLM.defaultRules())
+        let llm = RuleBasedLLM(rules: [
+            try! RuleBasedLLM.Rule(violationName: "amount", pattern: #"\d+\.?\d*\s*元"#, severity: "low"),
+        ])
         let prompt = """
         ## CASE DATA
         ### content
-        this email user@domain.com should be detected
+        月工资标准为7550元
         """
         let result = try await llm.judge(prompt)
         let verdict = VerdictParser.parse(result)
 
-        // Register the content as a source
         var validator = EvidenceValidator()
-        validator.addSource("content", "this email user@domain.com should be detected")
+        validator.addSource("content", "月工资标准为7550元")
 
         let (allValid, _) = validator.validateAll(verdict.evidenceRefs)
-        XCTAssertTrue(allValid, "All rule-based evidence refs should be verifiable since snippets come from actual content")
+        XCTAssertTrue(allValid, "Rule-based evidence refs should be verifiable since snippets come from actual content")
     }
 
     // MARK: - CapabilityDetector

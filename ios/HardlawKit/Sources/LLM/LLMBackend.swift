@@ -53,10 +53,4 @@ public actor MockLLM: LLMBackend {
     }
 }
 
-// MARK: - LLMError
 
-public enum LLMError: Error, Sendable {
-    case noBackendConfigured
-    case modelLoadFailed(String)
-    case inferenceError(String)
-}

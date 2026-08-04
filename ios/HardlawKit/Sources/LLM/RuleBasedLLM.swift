@@ -25,17 +25,11 @@ public actor RuleBasedLLM: LLMBackend {
         self.rules = rules
     }
 
-    /// Default rules: common banned content patterns.
+    /// Placeholder rules — replace with domain-specific rules for your use case.
     public static func defaultRules() -> [Rule] {
         [
-            // Profanity detection (example patterns)
-            try! Rule(violationName: "profanity", pattern: #"\b(damn|hell)\b"#, severity: "low"),
-            // PII: credit card numbers
-            try! Rule(violationName: "pii_leak", pattern: #"\b(?:\d[ -]?){13,16}\b"#, severity: "critical"),
-            // PII: email addresses
-            try! Rule(violationName: "pii_leak", pattern: #"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#, severity: "high"),
-            // PII: phone numbers (loose)
-            try! Rule(violationName: "pii_leak", pattern: #"\b\d{3}[-.]?\d{3}[-.]?\d{4}\b"#, severity: "medium"),
+            // Example: detect numbers mentioned as monetary amounts
+            try! Rule(violationName: "amount_mismatch", pattern: #"\d+\.?\d*\s*元"#, severity: "low"),
         ]
     }
 

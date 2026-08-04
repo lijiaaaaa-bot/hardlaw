@@ -1,6 +1,5 @@
 import SwiftUI
 import HardlawKit
-import PhotosUI
 
 /// 案件工作台 — 证据目录 + Gap 报告 + 导出
 struct CaseWorkbenchView: View {
@@ -9,7 +8,6 @@ struct CaseWorkbenchView: View {
     @State private var selectedTab = 0
     @State private var showEvidenceEditor = false
     @State private var editingItem: EvidenceItem?
-    @State private var selectedPhoto: PhotosPickerItem?
 
     var body: some View {
         TabView(selection: $selectedTab) {

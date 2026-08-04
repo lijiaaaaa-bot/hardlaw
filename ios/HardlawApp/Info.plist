@@ -18,10 +18,6 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
-	<key>NSCameraUsageDescription</key>
-	<string>Hardlaw uses the camera to audit content for policy compliance in real time. All processing is performed on-device.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Hardlaw needs access to your photo library to audit images for policy compliance.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>
