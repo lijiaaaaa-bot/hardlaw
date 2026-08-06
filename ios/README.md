@@ -8,9 +8,10 @@ enforced by a hard-coded rule engine that defaults to reject (fail-closed).
 
 ```
 Camera/Photo → VisionEvidenceCollector (ANE-accelerated OCR + face/rectangle detection)
+             └─ MLXVisionCollector (semantic doc understanding: handwriting, stamps, fields, anomalies)
              → EvidenceBundle (refs + source material)
              → Court.hear(caseData) → Procedure state machine
-             → LLM judge (RuleBasedLLM / MockLLM / future MLXLLM)
+             → LLM judge (RuleBasedLLM / MockLLM / MLXLLM)
              → VerdictParser (3-tier: JSON → terminal token → default-to-reject)
              → EvidenceValidator (snippet substring check — anti-hallucination)
              → CaseResult (approved/rejected/blocked/stalled)
@@ -33,6 +34,9 @@ JSON wire format is byte-identical to Python — statutes can round-trip between
 - macOS with Xcode 16.0+
 - iOS 17.0+ (simulator or device)
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`)
+- [mlx-libraries](https://github.com/mlx-community/mlx-libraries) (Swift Package, for on-device LLM + vision)
+  - 4 GB+ device RAM required for MLX backends
+  - ~500 MB storage per model (auto-downloaded on first use)
 
 ## Quick Start
 
@@ -61,9 +65,9 @@ ios/
 │   │   ├── Evidence/              # EvidenceRef, EvidenceRule, EvidenceValidator
 │   │   ├── Verdict/               # Verdict, VerdictParser, Fingerprint (CryptoKit)
 │   │   ├── Court/                 # actor Court, CaseResult
-│   │   ├── LLM/                   # LLMBackend protocol, MockLLM, RuleBasedLLM
+│   │   ├── LLM/                   # LLMBackend protocol, MockLLM, RuleBasedLLM, MLXLLM
 │   │   └── Support/               # JSONValue
-│   ├── Vision/                    # VisionEvidenceCollector
+│   ├── Vision/                    # VisionEvidenceCollector, MLXVisionCollector, PaddleOCRAdapter
 │   └── Tests/                     # 99 XCTest unit tests (1:1 Python port)
 ├── HardlawApp/                    # SwiftUI App
 │   ├── HardlawApp.swift           # @main entry point
@@ -80,7 +84,8 @@ ios/
 |---|---|---|---|
 | **RuleBasedLLM** | Deterministic regex detection (profanity, PII, emails, phones, credit cards) | <1ms | None |
 | **MockLLM** | Scripted responses for testing | <1ms | None |
-| **MLXLLM** | On-device LLM (future) | 30-90s | mlx-swift, 4GB+ RAM |
+| **MLXLLM** | On-device LLM (Qwen2.5-0.5B-Instruct 4-bit) | 30-90s | mlx-libraries, 4GB+ RAM |
+| **MLXVisionCollector** | Semantic document understanding (handwriting, stamps, fields, anomalies) | 1-5s per image | mlx-libraries, 4GB+ RAM |
 
 ## App Modes
 
@@ -111,7 +116,8 @@ ios/
 
 ## Roadmap
 
-- [ ] MLXLLM integration (mlx-swift + Qwen2.5-0.5B-Instruct 4-bit)
+- [x] MLXLLM integration (mlx-libraries + Qwen2.5-0.5B-Instruct 4-bit)
+- [x] MLXVisionCollector (semantic document analysis: handwriting, stamps, fields, anomalies)
 - [ ] Add VNDetectHumanBodyPoseRequest for pose evidence
 - [ ] Add VNDetectFaceLandmarksRequest for facial expression evidence
 - [ ] User-definable statutes via JSON import

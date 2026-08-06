@@ -11,6 +11,11 @@ settings:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
 
+packages:
+  mlx-libraries:
+    url: https://github.com/mlx-community/mlx-libraries
+    from: "1.0.0"
+
 targets:
   HardlawKit:
     type: framework
@@ -30,6 +35,8 @@ targets:
         OTHER_LDFLAGS:
           - -lpaddle_api_light_bundled
           - -lc++
+    dependencies:
+      - package: mlx-libraries
 
   HardlawKitTests:
     type: bundle.unit-test

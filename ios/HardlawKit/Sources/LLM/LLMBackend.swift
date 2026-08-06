@@ -4,6 +4,25 @@ import Foundation
 
 /// Protocol for pluggable LLM judge backends.
 /// Mirrors Python `hardlaw.llm.LLMBackend` Protocol.
+///
+/// ## Available Backends
+///
+/// | Backend | Description | Latency | Requirements |
+/// |---------|-------------|---------|--------------|
+/// | ``MockLLM`` | Scripted responses for testing | <1ms | None |
+/// | ``RuleBasedLLM`` | Deterministic regex detection | <1ms | None |
+/// | ``MLXLLM`` | On-device MLX (Qwen2.5-0.5B-Instruct 4-bit) | 30-90s | mlx-libraries, 4GB+ RAM |
+///
+/// ## Creating a New Backend
+///
+/// Conform to this protocol with an `actor` for thread safety. The `judge(_:)`
+/// method receives a full judgment prompt (including case data, statutes, prior
+/// gaps, and the output contract) and must return raw text that
+/// `VerdictParser.parse()` can handle — a JSON verdict object followed by a
+/// terminal token ("Refuted" or "Not Refuted").
+///
+/// Errors thrown from `judge(_:)` are caught by `Court.invokeJudge(ctx:step:)`
+/// and result in a fail-closed verdict (`refuted: true, blocking: true`).
 public protocol LLMBackend: Sendable {
     /// Submit a judgment prompt and receive raw LLM output.
     /// The only async point in the entire hardlaw pipeline.
