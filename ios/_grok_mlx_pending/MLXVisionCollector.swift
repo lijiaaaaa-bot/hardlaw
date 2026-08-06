@@ -417,7 +417,8 @@ public actor MLXVisionCollector {
 
             // Structured fields
             if let fields = json["structured_fields"] as? [String: [String: Any]] {
-                for (fieldName, fieldData) in fields.sorted(by: { $0.key < $1.key }) {
+                let sortedFields = fields.sorted(by: { $0.key < $1.key })
+                for (fieldName, fieldData) in sortedFields {
                     let value = fieldData["value"] as? String
                         ?? stringify(fieldData["value"])
                     let confidence = fieldData["confidence"] as? String ?? "medium"

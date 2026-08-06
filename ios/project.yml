@@ -11,11 +11,6 @@ settings:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
 
-packages:
-  mlx-libraries:
-    url: https://github.com/mlx-community/mlx-libraries
-    from: "1.0.0"
-
 targets:
   HardlawKit:
     type: framework
@@ -23,20 +18,12 @@ targets:
     sources:
       - path: HardlawKit/Sources
       - path: HardlawKit/Vision
-      - path: HardlawKit/Vision/PaddleOCR
     settings:
       base:
         GENERATE_INFOPLIST_FILE: true
         PRODUCT_BUNDLE_IDENTIFIER: com.hardlaw.kit
-        LIBRARY_SEARCH_PATHS:
-          - $(PROJECT_DIR)/HardlawKit/Vision/PaddleOCR/lib
-        HEADER_SEARCH_PATHS:
-          - $(PROJECT_DIR)/HardlawKit/Vision/PaddleOCR/include
-        OTHER_LDFLAGS:
-          - -lpaddle_api_light_bundled
-          - -lc++
-    dependencies:
-      - package: mlx-libraries
+
+
 
   HardlawKitTests:
     type: bundle.unit-test
@@ -59,6 +46,17 @@ targets:
       - HardlawApp
     dependencies:
       - target: HardlawKit
+    settings:
+      base:
+        DEVELOPMENT_TEAM: 9F3HMSMBR5
+        SWIFT_OBJC_BRIDGING_HEADER: HardlawApp/Services/PaddleOCR-Bridging-Header.h
+        HEADER_SEARCH_PATHS:
+          - $(PROJECT_DIR)/HardlawKit/Vision/PaddleOCR/include
+        LIBRARY_SEARCH_PATHS:
+          - $(PROJECT_DIR)/HardlawKit/Vision/PaddleOCR/lib
+        "OTHER_LDFLAGS[sdk=iphoneos*]":
+          - -lpaddle_api_light_bundled
+          - -lc++
     info:
       path: HardlawApp/Info.plist
       properties:
