@@ -318,6 +318,20 @@ _ARTICLE_RE = re.compile(
 # Chapter/section headings
 _HEADING_RE = re.compile(r"^(#{2,4})\s+(.+)$", re.MULTILINE)
 
+# Amendment instruction patterns for 刑法修正案 chunking.
+# Matches lines like:
+#   将刑法第十七条修改为：...
+#   在刑法第一百三十三条之一后增加一条，作为第一百三十三条之二：...
+#   将刑法第一百三十四条第二款修改为：...
+_AMENDMENT_RE = re.compile(
+    r"(?:将|在)刑法"
+    r"(?P<full_article>第[零一二三四五六七八九十百千万\d]+条(?:之[零一二三四五六七八九十\d]+)?)"
+    r"(?:第(?P<paragraph>[零一二三四五六七八九十\d]+)款)?"
+    r"(?:修改为|后增加一条，作为\s*(?P<new_article>第[零一二三四五六七八九十百千万\d]+条(?:之[零一二三四五六七八九十\d]+)?)"
+    r"|中增加一款作为[^，]*，将该条修改为)"
+    r"[：:]\s*",
+)
+
 
 def _chunk_body(
     law_id: str,
@@ -325,9 +339,22 @@ def _chunk_body(
     category: str,
     body: str,
 ) -> list[LawChunk]:
-    """Split a law body into article-level chunks."""
+    """Split a law body into article-level chunks.
+
+    Handles two formats:
+    1. Standard legislation — articles start with "第X条" at line beginning.
+    2. Criminal law amendments (刑法修正案) — instructional format:
+       "将刑法第X条修改为：", "在刑法第X条后增加一条，作为第Y条："
+    """
     chunks: list[LawChunk] = []
 
+    # Detect amendment format: body contains amendment instruction patterns.
+    # Don't check just the first line — some amendments have preface paragraphs
+    # before the actual instructions (e.g., "为了惩治...对刑法作如下修改").
+    if category == "刑法" and _AMENDMENT_RE.search(body):
+        return _chunk_amendment(law_id, law_title, category, body)
+
+    # Standard chunking: articles start with "第X条" at line beginning
     # Track current heading context
     current_heading = ""
 
@@ -396,6 +423,92 @@ def _chunk_body(
             heading="",
             text=body.strip(),
             search_text=f"{law_title} {body.strip()}",
+        ))
+
+    return chunks
+
+
+def _chunk_amendment(
+    law_id: str,
+    law_title: str,
+    category: str,
+    body: str,
+) -> list[LawChunk]:
+    """Split a 刑法修正案 body into per-instruction chunks.
+
+    Each amendment instruction ("将刑法第X条修改为" / "在刑法第X条后增加一条")
+    becomes its own searchable chunk with the affected article number.
+
+    This replaces the previous behavior where entire amendments were 1 chunk,
+    making their substantive content invisible to search.
+    """
+    chunks: list[LawChunk] = []
+
+    # Find all amendment instruction positions
+    instructions: list[tuple[int, int, str, str]] = []
+    # (start_pos, end_pos, article_num, instruction_type)
+
+    for m in _AMENDMENT_RE.finditer(body):
+        start = m.start()
+        end = m.end()
+
+        # Determine article number
+        new_article = m.group("new_article")
+        if new_article:
+            # "在刑法第X条后增加一条，作为第Y条" → use new article number Y
+            article_num = new_article
+        else:
+            # "将刑法第X条修改为" → use full article number
+            article_num = m.group("full_article")
+            paragraph = m.group("paragraph")
+            if paragraph:
+                article_num = f"{article_num}第{paragraph}款"
+
+        full_instruction = body[m.start():m.end()]
+        instructions.append((start, end, article_num, full_instruction))
+
+    if not instructions:
+        # Fallback: no amendment instructions found, create single chunk
+        if body.strip():
+            chunks.append(LawChunk(
+                chunk_id=f"{law_id}/full",
+                law_id=law_id,
+                law_title=law_title,
+                category=category,
+                article_num="",
+                heading="",
+                text=body.strip(),
+                search_text=f"{law_title} {body.strip()}",
+            ))
+        return chunks
+
+    # Extract text for each instruction
+    for idx, (start, end, article_num, instruction) in enumerate(instructions):
+        # Determine where this instruction's content ends
+        if idx + 1 < len(instructions):
+            next_start = instructions[idx + 1][0]
+        else:
+            next_start = len(body)
+
+        # Content is: instruction header + text until next instruction
+        content = body[start:next_start].strip()
+
+        # Build search text
+        search_text = f"{law_title} 刑法 {article_num} {content}"
+
+        # Chunk ID: law_id/article_num with amendment suffix
+        # e.g. "刑法修正案（十一）/第一百三十三条之二"
+        chunk_id = f"{law_id}/{article_num}"
+
+        chunks.append(LawChunk(
+            chunk_id=chunk_id,
+            law_id=law_id,
+            law_title=law_title,
+            category=category,
+            article_num=article_num,
+            heading="",
+            text=content,
+            search_text=search_text,
         ))
 
     return chunks

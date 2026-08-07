@@ -25,9 +25,25 @@ Usage::
 
     # Get specific article
     article = store.get_article("民法典", 464)
+
+    # LLM-enhanced search (requires openai package + API key)
+    from hardlaw.legal_knowledge import LLMRanker
+
+    ranker = LLMRanker(store, index)
+    result = await ranker.search_with_llm("老板把我开了还不给钱")
+    print(result.answer)
 """
 
 from hardlaw.legal_knowledge.law_store import LawStore, LawDocument, LawChunk
 from hardlaw.legal_knowledge.law_index import LawIndex
+from hardlaw.legal_knowledge.llm_ranker import LLMRanker, LLMSearchResult, create_ranker
 
-__all__ = ["LawStore", "LawDocument", "LawChunk", "LawIndex"]
+__all__ = [
+    "LawStore",
+    "LawDocument",
+    "LawChunk",
+    "LawIndex",
+    "LLMRanker",
+    "LLMSearchResult",
+    "create_ranker",
+]
