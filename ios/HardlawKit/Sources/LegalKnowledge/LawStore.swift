@@ -44,17 +44,15 @@ public final class LawStore: @unchecked Sendable {
     ///   Defaults to `.main`; tests should use `Bundle(for: type)` or
     ///   `Bundle.module`.
     public func load(from bundle: Bundle = .main) throws {
-        guard
-            let resourceURL = bundle.url(
-                forResource: "LegalKnowledge",
-                withExtension: nil
-            )
-        else {
-            throw LawStoreError.resourceNotFound(
-                "LegalKnowledge/ directory not found in bundle"
-            )
+        let resourceURL: URL
+        // Try subdirectory first, then root (XcodeGen flattens folder references)
+        if let subdir = bundle.url(forResource: "LegalKnowledge", withExtension: nil) {
+            resourceURL = subdir
+        } else if bundle.url(forResource: "laws_chunks", withExtension: "json") != nil {
+            resourceURL = bundle.bundleURL
+        } else {
+            throw LawStoreError.resourceNotFound("LegalKnowledge/ directory not found in bundle")
         }
-
         try loadChunks(from: resourceURL)
         try loadVocabulary(from: resourceURL)
     }

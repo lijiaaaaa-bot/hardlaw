@@ -58,7 +58,7 @@ targets:
       base:
         DEVELOPMENT_TEAM: 9F3HMSMBR5
     resources:
-      - path: HardlawKit/Resources/LegalKnowledge
+      - path: HardlawApp/LegalKnowledge
         type: folder
         SWIFT_OBJC_BRIDGING_HEADER: HardlawApp/Services/PaddleOCR-Bridging-Header.h
         HEADER_SEARCH_PATHS:

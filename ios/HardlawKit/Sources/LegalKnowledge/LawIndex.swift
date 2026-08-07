@@ -82,12 +82,12 @@ public final class LawIndex: @unchecked Sendable {
     /// - uint32: dimension (little-endian)
     /// - float32[nVectors × dimension]: row-major vectors
     public func loadVectors(from bundle: Bundle = .main) throws {
-        guard
-            let resourceURL = bundle.url(
-                forResource: "LegalKnowledge",
-                withExtension: nil
-            )
-        else {
+        let resourceURL: URL
+        if let subdir = bundle.url(forResource: "LegalKnowledge", withExtension: nil) {
+            resourceURL = subdir
+        } else if bundle.url(forResource: "laws_vectors", withExtension: "bin") != nil {
+            resourceURL = bundle.bundleURL
+        } else {
             throw LawIndexError.resourceNotFound
         }
 
