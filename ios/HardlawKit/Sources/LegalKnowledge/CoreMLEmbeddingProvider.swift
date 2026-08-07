@@ -96,41 +96,8 @@ public actor CoreMLEmbeddingProvider: EmbeddingProvider {
             throw LoadError.modelNotFound
         }
 
-        // Tokenize using swift-transformers
-        let encoded = try await CoreMLTokenizer.shared.encode(text: text)
-
-        // Build input feature provider (encoded already provides MLMultiArray)
-        let input = try MLDictionaryFeatureProvider(dictionary: [
-            "input_ids": encoded.inputIds,
-            "attention_mask": encoded.attentionMask,
-        ])
-
-        // Run inference
-        let output: MLFeatureProvider
-        do {
-            output = try await model.prediction(from: input)
-        } catch {
-            throw LoadError.predictionFailed(error)
-        }
-
-        // Extract embedding vector
-        guard
-            let embedding = output.featureValue(for: "sentence_embedding")?.multiArrayValue
-        else {
-            throw LoadError.predictionFailed(
-                NSError(domain: "CoreMLEmbeddingProvider", code: -1,
-                        userInfo: [NSLocalizedDescriptionKey: "Missing 'sentence_embedding' in model output"])
-            )
-        }
-
-        // Convert MLMultiArray → [Float]
-        var vector = [Float](repeating: 0, count: dimension)
-        for i in 0..<dimension {
-            vector[i] = embedding[i].floatValue
-        }
-
-        // L2-normalize (contract required by LawIndex for inner-product similarity)
-        return l2Normalize(vector)
+        // Tokenizer disabled until swift-transformers is linked + model bundled
+        throw CoreMLEmbeddingProvider.LoadError.tokenizerNotFound
     }
 
     // MARK: - L2 Normalization
@@ -147,8 +114,9 @@ public actor CoreMLEmbeddingProvider: EmbeddingProvider {
     }
 }
 
-// MARK: - Tokenizer Helpers
+// MARK: - Tokenizer Helpers (disabled — requires swift-transformers + model bundle)
 
+/*
 /// Tokenizer wrapper using `huggingface/swift-transformers`.
 ///
 /// Loads `vocab.txt` and `tokenizer_config.json` from the bundled
@@ -215,3 +183,4 @@ private extension MLMultiArray {
         )
     }
 }
+*/

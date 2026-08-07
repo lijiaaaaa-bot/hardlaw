@@ -130,13 +130,13 @@ public final class LawStore: @unchecked Sendable {
             var score: Double = 0
             for token in tokens {
                 if let weight = queryWeights[token] {
-                    let tf = min(Double(chunkTokens.count(of: token)), 3.0)
+                    let tf = min(Double(chunkTokens.filter({ $0 == token }).count), 3.0)
                     score += weight * tf
                 }
             }
             if score > 0 {
                 // Normalize by document length to avoid long-doc bias
-                let norm = score / (1.0 + sqrt(Double(chunkTokens.count)))
+                var norm = score / (1.0 + sqrt(Double(chunkTokens.count)))
                 // Category boost — down-weight guides and cases
                 norm = applyCategoryBoost(chunk: chunk, score: norm)
                 scored.append((chunk, norm))
