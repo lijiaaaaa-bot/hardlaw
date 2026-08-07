@@ -16,11 +16,17 @@ struct CaseWorkbenchView: View {
     @State private var expandedNeedsYou = false
     @State private var statusMessage: String?
     @State private var showFileImporter = false
+    @State private var goal: Goal?
+    @State private var goalProgress: String = ""
 
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
                 CaseHeader(caseFile: caseFile)
+
+                if let goal {
+                    GoalProgressView(goal: goal)
+                }
 
                 if !activeItems.isEmpty {
                     NeedsYouSection(
@@ -40,7 +46,6 @@ struct CaseWorkbenchView: View {
 
                 ActivitySection(caseFile: caseFile)
 
-                // Spacer so command bar clears content
                 Color.clear.frame(height: 80)
             }
         }
@@ -144,6 +149,11 @@ struct CaseWorkbenchView: View {
             statusMessage = "试试：补充银行流水 / 生成目录 / 检查工资 / 全面复核"
             return
         }
+        // Goal-driven: "审查"/"全面复核" triggers full plan-execute-verify
+        if intent.kind == .fullReview || text.contains("审查") {
+            runGoal(makeReviewGoal())
+            return
+        }
         isProcessing = true
         Task {
             if let result = await executeIntent(intent) {
@@ -152,11 +162,67 @@ struct CaseWorkbenchView: View {
             }
             try? PersistenceController.shared.save(caseFile)
             isProcessing = false
-            let msg = statusMessage
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(3))
-                if statusMessage == msg { statusMessage = nil }
+        }
+    }
+
+    /// Execute a goal's steps sequentially with visible progress (Plan → Execute → Verify).
+    func runGoal(_ goal: Goal) {
+        var g = goal
+        g.status = .running
+        self.goal = g
+        isProcessing = true
+        Task {
+            for i in g.steps.indices {
+                g.steps[i].status = .running
+                self.goal = g
+                goalProgress = "步骤 \(i+1)/\(g.steps.count): \(g.steps[i].name)"
+                let result = await executeGoalStep(g.steps[i])
+                g.steps[i].status = result != nil ? .done : .failed
+                g.steps[i].resultSummary = result.flatMap { summary(from: $0) } ?? ""
+                if let r = result { applyVerdicts(r) }
+                self.goal = g
             }
+            g.status = g.isComplete ? .done : .failed
+            self.goal = g
+            statusMessage = g.isComplete ? "审查完成" : "部分步骤需要人工处理"
+            try? PersistenceController.shared.save(caseFile)
+            isProcessing = false
+        }
+    }
+
+    func makeReviewGoal() -> Goal {
+        var steps: [GoalStep] = []
+        let needsDrafting = caseFile.evidenceItems.filter {
+            ($0.proofContentState.displayValue?.isEmpty ?? true)
+        }
+        if !needsDrafting.isEmpty {
+            steps.append(GoalStep(name: "生成证据目录", detail: "\(needsDrafting.count) 项待生成", kind: .generateCatalog))
+        }
+        steps.append(GoalStep(name: "验证引用出处", detail: "逐字核对原文", kind: .verifyCitations))
+        steps.append(GoalStep(name: "检测证据缺口", detail: "劳动关系、工资标准、混同用工", kind: .detectGaps))
+        let salaryItems = caseFile.evidenceItems.filter {
+            $0.name.contains("工资") || ($0.proofContentState.displayValue ?? "").contains("元")
+        }
+        if salaryItems.count >= 2 {
+            steps.append(GoalStep(name: "工资一致性检查", detail: "\(salaryItems.count) 份工资证据", kind: .checkConsistency))
+        }
+        return Goal(description: "审查 \(caseFile.caseName)", steps: steps)
+    }
+
+    func executeGoalStep(_ step: GoalStep) async -> CaseResult? {
+        switch step.kind {
+        case .generateCatalog:
+            guard caseFile.evidenceItems.count > 0, let proc = try? CourtProcedures.catalogGeneration(itemCount: caseFile.evidenceItems.count) else { return nil }
+            return await runCourt(proc, statutes: StatuteBook())
+        case .verifyCitations:
+            verifySnippets()
+            return nil
+        case .detectGaps:
+            guard let proc = try? CourtProcedures.gapDetection() else { return nil }
+            return await runCourt(proc, statutes: LaborLawStatutes.gapDetectionBook)
+        case .checkConsistency:
+            guard let proc = try? CourtProcedures.salaryConsistency() else { return nil }
+            return await runCourt(proc, statutes: StatuteBook())
         }
     }
 
@@ -579,6 +645,49 @@ struct EvidenceStatusChip: View {
 }
 
 // MARK: - Activity Section
+
+// MARK: - Goal Progress View
+
+struct GoalProgressView: View {
+    let goal: Goal
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Image(systemName: goal.isComplete ? "checkmark.circle.fill" : "circle.grid.cross.fill")
+                    .foregroundStyle(goal.isComplete ? .green : .blue)
+                Text(goal.description).font(.subheadline).fontWeight(.semibold)
+                Spacer()
+                Text("\(Int(goal.progress * 100))%").font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal).padding(.vertical, 10)
+
+            ProgressView(value: goal.progress)
+                .padding(.horizontal).padding(.bottom, 4)
+
+            ForEach(goal.steps) { step in
+                HStack(spacing: 10) {
+                    Image(systemName: step.status == .done ? "checkmark.circle.fill" :
+                           step.status == .running ? "circle.dotted" :
+                           step.status == .failed ? "xmark.circle.fill" : "circle")
+                        .foregroundStyle(step.status == .done ? .green :
+                                         step.status == .running ? .blue :
+                                         step.status == .failed ? .red : .gray)
+                        .font(.caption)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(step.name).font(.caption).fontWeight(.medium)
+                        Text(step.status == .done ? step.resultSummary : step.detail)
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal).padding(.vertical, 4)
+            }
+            Divider().padding(.top, 4)
+        }
+        .background(.blue.opacity(0.04))
+    }
+}
 
 struct ActivitySection: View {
     let caseFile: CaseFile
