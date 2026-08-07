@@ -28,10 +28,13 @@ targets:
     sources:
       - path: HardlawKit/Sources
       - path: HardlawKit/Vision
+        excludes:
+          - "PaddleOCR"
     settings:
       base:
         GENERATE_INFOPLIST_FILE: true
         PRODUCT_BUNDLE_IDENTIFIER: com.hardlaw.kit
+        DEVELOPMENT_TEAM: SP272623JD
 
   HardlawKitTests:
     type: bundle.unit-test
@@ -56,18 +59,18 @@ targets:
       - target: HardlawKit
     settings:
       base:
-        DEVELOPMENT_TEAM: 9F3HMSMBR5
+        DEVELOPMENT_TEAM: SP272623JD
+        SWIFT_OBJC_BRIDGING_HEADER: HardlawApp/Services/PaddleOCR-Bridging-Header.h
+        HEADER_SEARCH_PATHS:
+          - $(PROJECT_DIR)/HardlawApp/PaddleOCR/include
+        LIBRARY_SEARCH_PATHS:
+          - $(PROJECT_DIR)/HardlawApp/PaddleOCR/lib
+        OTHER_LDFLAGS:
+          - -lpaddle_api_light_bundled
+          - -lc++
     resources:
       - path: HardlawApp/LegalKnowledge
         type: folder
-        SWIFT_OBJC_BRIDGING_HEADER: HardlawApp/Services/PaddleOCR-Bridging-Header.h
-        HEADER_SEARCH_PATHS:
-          - $(PROJECT_DIR)/HardlawKit/Vision/PaddleOCR/include
-        LIBRARY_SEARCH_PATHS:
-          - $(PROJECT_DIR)/HardlawKit/Vision/PaddleOCR/lib
-        "OTHER_LDFLAGS[sdk=iphoneos*]":
-          - -lpaddle_api_light_bundled
-          - -lc++
     info:
       path: HardlawApp/Info.plist
       properties:

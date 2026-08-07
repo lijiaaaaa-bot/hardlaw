@@ -58,8 +58,8 @@ static NSString* CTC(const float* l,int T,int C,NSArray<NSString*>* d){
     _det=CreatePaddlePredictor<MobileConfig>(dc); if(!_det){NSLog(@"[PaddleOCR] det FAIL");return nil;}
     MobileConfig rc;rc.set_model_from_file(rp.UTF8String);rc.set_threads(2);rc.set_power_mode(LITE_POWER_HIGH);
     _rec=CreatePaddlePredictor<MobileConfig>(rc); if(!_rec){NSLog(@"[PaddleOCR] rec FAIL");return nil;}
-    NSString* dc=[NSString stringWithContentsOfFile:dict encoding:NSUTF8StringEncoding error:nil];
-    NSMutableArray* a=[NSMutableArray arrayWithObject:@" "];[a addObjectsFromArray:[dc componentsSeparatedByString:@"\n"]];
+    NSString* dictStr=[NSString stringWithContentsOfFile:dict encoding:NSUTF8StringEncoding error:nil];
+    NSMutableArray* a=[NSMutableArray arrayWithObject:@" "];[a addObjectsFromArray:[dictStr componentsSeparatedByString:@"\n"]];
     _dict=a;_isLoaded=YES;NSLog(@"[PaddleOCR] Ready dict=%lu",(unsigned long)_dict.count);return self;
 }
 - (NSArray<NSString*>*)recognize:(CGImageRef)img error:(NSError**)err {
