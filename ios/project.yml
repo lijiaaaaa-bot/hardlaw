@@ -24,6 +24,7 @@ targets:
       - path: HardlawKit/Sources
       - path: HardlawKit/Vision
       - path: HardlawKit/Vision/PaddleOCR
+      - path: HardlawKit/Sources/LegalKnowledge
     settings:
       base:
         GENERATE_INFOPLIST_FILE: true
@@ -37,6 +38,9 @@ targets:
           - -lc++
     dependencies:
       - package: mlx-libraries
+    resources:
+      - path: HardlawKit/Resources/LegalKnowledge
+        type: folder
 
   HardlawKitTests:
     type: bundle.unit-test
