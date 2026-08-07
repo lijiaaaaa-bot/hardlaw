@@ -6,6 +6,13 @@ options:
   createIntermediateGroups: true
   xcodeVersion: "16.0"
 
+# MLX packages — enable after installing Metal Toolchain:
+#   xcodebuild -downloadComponent MetalToolchain
+# packages:
+#   mlx-swift-lm:
+#     url: https://github.com/ml-explore/mlx-swift-lm
+#     branch: main
+
 settings:
   base:
     SWIFT_VERSION: "6.0"
