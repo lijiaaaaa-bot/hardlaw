@@ -15,6 +15,7 @@ import NaturalLanguage
 /// dependencies), combined with pre-computed IDF weights from `laws_vocab.json`.
 /// This mirrors the Python jieba+IDF approach.
 public final class LawStore: @unchecked Sendable {
+    public init() {}
     // MARK: - Properties
 
     /// All searchable chunks loaded from the bundle.

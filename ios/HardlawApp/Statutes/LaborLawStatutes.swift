@@ -113,6 +113,9 @@ public enum LaborLawStatutes {
         defaultToReject: true, blocking: true
     )
 
+        /// Convenience: statutes for gap detection.
+    public static let gapDetectionBook = StatuteBook(statutes: [employmentRelationship, wageArrears, mixedEmployment, salaryStandard])
+
     /// 举证责任提示（程序性规则，非实质性 statute）
     public static let burdenOfProof = Statute(
         name: "举证责任提示",

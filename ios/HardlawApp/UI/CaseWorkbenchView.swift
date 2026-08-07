@@ -79,30 +79,18 @@ struct CaseWorkbenchView: View {
                 }
                 statusMessage = "已导入 \(urls.count) 个文件，正在OCR识别…"
                 isProcessing = true
-                let agent = LawAgent()
                 Task {
                     var failed = 0
                     for (url, item) in zip(urls, importedItems) {
-                        // OCR each imported image/PDF, then generate the catalog entry
                         let ocrText = await Self.recognizeText(from: url)
                         item.sourceOCRText = ocrText
-                        guard !ocrText.isEmpty else {
-                            failed += 1
-                            continue
-                        }
-                        await agent.generateCatalogEntry(item: item, claimContext: caseFile.claims) { p in
-                            statusMessage = "\(p.step) · \(p.detail)"
-                        }
+                        if ocrText.isEmpty { failed += 1 }
                     }
                     statusMessage = failed == 0
                         ? "已完成 \(urls.count) 个文件的识别"
                         : "\(urls.count - failed) 个文件识别成功，\(failed) 个未识别"
                     try? PersistenceController.shared.save(caseFile)
                     isProcessing = false
-                    Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(2))
-                    statusMessage = nil
-                }
                 }
             }
         }
@@ -152,55 +140,103 @@ struct CaseWorkbenchView: View {
 
     func handleCommand(_ text: String) {
         let intent = IntentParser.parse(text, stage: caseFile.stage)
+        guard intent.isParsed else {
+            statusMessage = "试试：补充银行流水 / 生成目录 / 检查工资 / 全面复核"
+            return
+        }
         isProcessing = true
-        let agent = LawAgent()
-
         Task {
-            switch intent.kind {
-            case .generateCatalog, .fullReview:
-                await agent.fullReview(caseFile: caseFile) { p in
-                    statusMessage = "\(p.step) · \(p.detail)"
-                }
-                statusMessage = "完成：\(caseFile.evidenceItems.count) 项已处理"
-                try? PersistenceController.shared.save(caseFile)
-
-            case .detectGaps:
-                let gaps = await agent.detectGaps(caseFile: caseFile) { p in
-                    statusMessage = "\(p.step) · \(p.detail)"
-                }
-                for gap in gaps { caseFile.gaps.append(gap) }
-                statusMessage = gaps.isEmpty ? "未发现缺口" : "发现 \(gaps.count) 个缺口"
-                try? PersistenceController.shared.save(caseFile)
-
-            case .checkConsistency:
-                for item in caseFile.evidenceItems where !item.sourceOCRText.isEmpty {
-                    await agent.generateCatalogEntry(
-                        item: item, claimContext: caseFile.claims
-                    ) { p in statusMessage = "\(p.step) · \(p.detail)" }
-                }
-                statusMessage = "一致性检查完成"
-                try? PersistenceController.shared.save(caseFile)
-
-            case .verifyCitations:
-                verifySnippets()
-                statusMessage = "引用验证完成"
-
-            case .importEvidence, .addFact:
-                let result = IntentHandler.handle(intent, caseFile: caseFile)
-                statusMessage = result.message
-
-            default:
-                let result = IntentHandler.handle(intent, caseFile: caseFile)
-                statusMessage = result.message
+            if let result = await executeIntent(intent) {
+                applyVerdicts(result)
+                statusMessage = summary(from: result)
             }
-
             try? PersistenceController.shared.save(caseFile)
             isProcessing = false
+            let msg = statusMessage
             Task { @MainActor in
-                try? await Task.sleep(for: .seconds(2))
-                statusMessage = nil
+                try? await Task.sleep(for: .seconds(3))
+                if statusMessage == msg { statusMessage = nil }
             }
         }
+    }
+
+    func executeIntent(_ intent: ParsedIntent) async -> CaseResult? {
+        switch intent.kind {
+        case .generateCatalog:
+            let count = caseFile.evidenceItems.count
+            guard count > 0, let proc = try? CourtProcedures.catalogGeneration(itemCount: count) else { return nil }
+            statusMessage = "生成 \(count) 项目录…"
+            return await runCourt(proc, statutes: StatuteBook())
+        case .fullReview:
+            let count = caseFile.evidenceItems.count
+            guard count > 0, let proc = try? CourtProcedures.fullReview(itemCount: count) else { return nil }
+            statusMessage = "全面复核中…"
+            return await runCourt(proc, statutes: StatuteBook())
+        case .detectGaps:
+            guard let proc = try? CourtProcedures.gapDetection() else { return nil }
+            statusMessage = "检测证据缺口…"
+            return await runCourt(proc, statutes: LaborLawStatutes.gapDetectionBook)
+        case .checkConsistency:
+            guard let proc = try? CourtProcedures.salaryConsistency() else { return nil }
+            statusMessage = "工资一致性检查…"
+            return await runCourt(proc, statutes: StatuteBook())
+        case .verifyCitations:
+            verifySnippets()
+            statusMessage = "引用验证完成"
+            return nil
+        default:
+            let r = IntentHandler.handle(intent, caseFile: caseFile)
+            statusMessage = r.message
+            return nil
+        }
+    }
+
+    func runCourt(_ procedure: Procedure, statutes: StatuteBook) async -> CaseResult {
+        var caseData: [String: JSONValue] = [:]
+        for item in caseFile.evidenceItems {
+            if !item.sourceOCRText.isEmpty {
+                caseData["evidence_\(item.number)"] = .string(item.sourceOCRText)
+            }
+            if let c = item.proofContentState.displayValue, !c.isEmpty {
+                caseData["catalog_\(item.number)"] = .string(c)
+            }
+        }
+        for claim in caseFile.claims {
+            caseData["claim_\(claim.claimNumber)"] = .string(claim.content)
+        }
+        // LegalKnowledge citations as prompt context
+        let store = LawStore()
+        try? store.load(from: .main)
+        if store.chunkCount > 0 {
+            let query = caseFile.claims.map(\.content).joined(separator: " ")
+            let results = await LawIndex(store: store).search(query, k: 5)
+            let cites = results.map { "\($0.chunk.lawID)第\($0.chunk.articleNum)条" }
+            caseData["legal_citations"] = .string(cites.joined(separator: "; "))
+        }
+        let llm: any LLMBackend = RuleBasedLLM(rules: RuleBasedLLM.defaultRules())
+        let court = Court(statutes: statutes, procedure: procedure, llm: llm)
+        return await court.hear(caseData: caseData)
+    }
+
+    func applyVerdicts(_ result: CaseResult) {
+        for (i, verdict) in result.verdicts.enumerated() {
+            guard i < caseFile.evidenceItems.count else { break }
+            let item = caseFile.evidenceItems[i]
+            if !verdict.reasoning.isEmpty {
+                _ = item.proofContentState.merge(newMachineValue: verdict.reasoning, directlyAffected: false, evidenceVersion: 0)
+            }
+            for f in verdict.findings where !f.isEmpty { item.proofContentState.stale = true }
+        }
+        for v in result.verdicts {
+            for f in v.findings where !f.isEmpty {
+                caseFile.gaps.append(GapItem(severity: f.kind == "gap" ? .high : .medium, description: f.detail, suggestedRemedy: v.reasoning, relatedClaim: f.location))
+            }
+        }
+    }
+
+    func summary(from result: CaseResult) -> String {
+        let g = result.verdicts.flatMap(\.findings).filter { !$0.isEmpty }.count
+        return "\(result.verdicts.count) 项已处理\(g > 0 ? "，发现 \(g) 个问题" : "")"
     }
 
     func verifySnippets() {
