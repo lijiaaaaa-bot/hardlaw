@@ -11,6 +11,14 @@ settings:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
 
+packages:
+  mlx-libraries:
+    url: https://github.com/mlx-community/mlx-libraries
+    from: "1.0.0"
+  swift-transformers:
+    url: https://github.com/huggingface/swift-transformers
+    from: "1.1.6"
+
 targets:
   HardlawKit:
     type: framework
@@ -18,12 +26,24 @@ targets:
     sources:
       - path: HardlawKit/Sources
       - path: HardlawKit/Vision
+      - path: HardlawKit/Vision/PaddleOCR
+      - path: HardlawKit/Sources/LegalKnowledge
     settings:
       base:
         GENERATE_INFOPLIST_FILE: true
         PRODUCT_BUNDLE_IDENTIFIER: com.hardlaw.kit
-
-
+        LIBRARY_SEARCH_PATHS:
+          - $(PROJECT_DIR)/HardlawKit/Vision/PaddleOCR/lib
+        HEADER_SEARCH_PATHS:
+          - $(PROJECT_DIR)/HardlawKit/Vision/PaddleOCR/include
+        OTHER_LDFLAGS:
+          - -lpaddle_api_light_bundled
+          - -lc++
+    dependencies:
+      - package: mlx-libraries
+    resources:
+      - path: HardlawKit/Resources/LegalKnowledge
+        type: folder
 
   HardlawKitTests:
     type: bundle.unit-test
