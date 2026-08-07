@@ -95,9 +95,6 @@ final class LegalKnowledgeTests: XCTestCase {
 }
 
 private func testBundle() -> Bundle {
-    let kitBundle = Bundle(for: LawStore.self)
-    if kitBundle.url(forResource: "LegalKnowledge", withExtension: nil) != nil {
-        return kitBundle
-    }
+    // Resources copied to main app bundle by XcodeGen
     return Bundle.main
 }

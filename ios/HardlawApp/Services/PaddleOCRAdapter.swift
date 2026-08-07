@@ -11,15 +11,10 @@ public protocol OCRBackend: Sendable {
 
 // MARK: - PaddleOCR Backend (device only)
 
+#if !targetEnvironment(simulator)
 public final class PaddleOCRBackend: OCRBackend, @unchecked Sendable {
     public static let displayName = "PaddleOCR"
-    public static var isAvailable: Bool {
-        #if targetEnvironment(simulator)
-        return false
-        #else
-        return true
-        #endif
-    }
+    public static var isAvailable: Bool { true }
 
     private let engine: PaddleOCREngine
 
@@ -29,7 +24,6 @@ public final class PaddleOCRBackend: OCRBackend, @unchecked Sendable {
         let recModel = modelsDir.appendingPathComponent("ch_PP-OCRv4_rec.pdmodel").path
         let recParams = modelsDir.appendingPathComponent("ch_PP-OCRv4_rec.pdiparams").path
         let dictPath = modelsDir.appendingPathComponent("ppocr_keys.txt").path
-
         guard let eng = PaddleOCREngine(
             detModel: detModel, detParams: detParams,
             recModel: recModel, recParams: recParams,
@@ -45,3 +39,4 @@ public final class PaddleOCRBackend: OCRBackend, @unchecked Sendable {
         return result
     }
 }
+#endif

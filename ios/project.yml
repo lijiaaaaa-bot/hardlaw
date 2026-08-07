@@ -32,9 +32,6 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: true
         PRODUCT_BUNDLE_IDENTIFIER: com.hardlaw.kit
-    resources:
-      - path: HardlawKit/Resources/LegalKnowledge
-        type: folder
 
   HardlawKitTests:
     type: bundle.unit-test
@@ -60,6 +57,9 @@ targets:
     settings:
       base:
         DEVELOPMENT_TEAM: 9F3HMSMBR5
+    resources:
+      - path: HardlawKit/Resources/LegalKnowledge
+        type: folder
         SWIFT_OBJC_BRIDGING_HEADER: HardlawApp/Services/PaddleOCR-Bridging-Header.h
         HEADER_SEARCH_PATHS:
           - $(PROJECT_DIR)/HardlawKit/Vision/PaddleOCR/include
