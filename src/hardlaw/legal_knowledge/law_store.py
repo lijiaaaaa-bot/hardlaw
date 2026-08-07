@@ -300,8 +300,9 @@ class LawStore:
 
 
 # Matches articles like "第一条", "第四百六十三条", "第 1 条"
+# Also captures "之X" suffixes: "第一百二十条之一", "第三十七条之二"
 _ARTICLE_RE = re.compile(
-    r"^(第[零一二三四五六七八九十百千万\d]+\s*条)\s*(.*)",
+    r"^(第[零一二三四五六七八九十百千万\d]+\s*条(?:之[零一二三四五六七八九十\d]+)?)\s*(.*)",
     re.MULTILINE,
 )
 
