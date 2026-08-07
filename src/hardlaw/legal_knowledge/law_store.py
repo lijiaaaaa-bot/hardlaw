@@ -213,11 +213,20 @@ class LawStore:
     #: primary legislation. Without this, long-form guides dominate keyword
     #: search results due to high token overlap.
     _CATEGORY_BOOST: dict[str, float] = {
+        # Core legislation — highest priority
         "民法典": 1.0, "刑法": 1.0, "社会法": 1.0,
-        "经济法": 1.0, "司法解释": 1.0,
-        "行政法": 0.9, "民法商法": 0.9, "宪法": 0.9,
-        "宪法相关法": 0.9,
-        "案例": 0.25, "办法": 0.25, "规定": 0.25, "其他": 0.25,
+        "经济法": 1.0, "宪法": 1.0, "宪法相关法": 1.0,
+        # Secondary legislation
+        "民法商法": 0.9, "行政法": 0.85,
+        # Judicial interpretations — long documents with dense terminology;
+        # down-weighted to prevent them from crowding out the primary laws
+        # they interpret. Users searching for "经济补偿金" should see
+        # 劳动合同法 before the judicial interpretation.
+        "司法解释": 0.4,
+        # Administrative regulations and methods
+        "规定": 0.5, "办法": 0.5,
+        # Reference materials — heavily down-weighted
+        "案例": 0.2, "其他": 0.15,
     }
 
     def all_chunks(self) -> list[LawChunk]:
@@ -416,7 +425,8 @@ def _ensure_jieba() -> None:
         "解除劳动合同", "终止劳动合同", "变更劳动合同",
         "订立劳动合同", "履行劳动合同", "违法解除劳动合同",
         "无固定期限劳动合同", "固定期限劳动合同",
-        "未签订劳动合同", "未订立劳动合同",
+        "未签订劳动合同", "未订立劳动合同", "未签劳动合同",
+        "二倍工资", "双倍工资", "支付二倍的工资",
         "支付加班费", "带薪年休假",
         # ── Medium compounds (3-4 chars) ────────────────────────
         "未签订", "未订立", "未签", "未支付", "未缴纳",
@@ -446,6 +456,16 @@ def _ensure_jieba() -> None:
         "职业病", "安全生产", "环境保护", "消费者权益",
         "股权转让", "注册资本",
         "自首", "立功", "累犯", "缓刑", "假释", "减刑",
+        # ── Colloquial → legal compound terms ──────────────────
+        "高空抛物",     # Prevent "高空" + "抛物" split; map to 民法典/刑法 provisions
+        "危险驾驶罪",   # Colloquial name for 刑法第133条之一
+        "被辞退",       # Worker-perspective term
+        "租房合同",     # Map to 租赁合同
+        "借钱不还",     # Map to 民间借贷
+        "借钱",         # Map to 借款
+        "双倍",         # Prevent splitting "双倍工资"
+        "年假",         # Map to 年休假
+        "醉驾",         # Map to 醉酒驾驶
         # ── Short terms (2 chars) ───────────────────────────────
         "产假", "哺乳", "赔偿", "补偿",
     ]
@@ -461,6 +481,7 @@ def _ensure_jieba() -> None:
         "根据", "按照", "依照", "关于", "对于", "有关",
         "及其", "以及", "或者", "并且", "因为", "所以",
         "的", "是", "在", "和", "与", "或", "之", "等",
+        "后果", "责任", "权利", "义务",  # Generic legal nouns — pollute search results
     }
     for term in legal_terms:
         jieba.add_word(term)
@@ -518,6 +539,7 @@ def _clear_token_cache() -> None:
 #: This handles vocabulary mismatch between natural language queries
 #: and actual law text wording.
 _QUERY_SYNONYMS: dict[str, list[str]] = {
+    # ── Labor law ──
     "经济补偿金": ["经济补偿"],
     "双倍工资": ["二倍工资", "二倍的工资"],
     "拖欠工资": ["克扣工资", "无故拖欠", "未支付工资", "劳动报酬"],
@@ -526,12 +548,37 @@ _QUERY_SYNONYMS: dict[str, list[str]] = {
     "无固定期限": ["无固定期限劳动合同"],
     "固定期限": ["固定期限劳动合同"],
     "未签订": ["未订立", "未签", "未与"],
+    "未签劳动合同": ["未订立书面劳动合同", "未与劳动者订立", "双倍工资", "二倍工资", "支付二倍的工资"],
+    "没签合同": ["未订立书面劳动合同", "双倍工资", "二倍工资"],
     "违法解除": ["违法解除劳动合同", "违法终止"],
     "合同无效": ["无效合同", "合同不生效"],
     "合同欺诈": ["欺诈手段", "欺诈行为", "欺诈", "可撤销", "违背真实意思"],
     "个人信息": ["个人数据", "个人信息保护"],
     "加班费": ["加班工资", "延长工作时间", "加班"],
     "产假": ["生育", "孕期", "哺乳期"],
+    "被辞退": ["解除劳动合同", "违法解除", "经济补偿", "赔偿金"],
+    "辞退": ["解除劳动合同", "违法解除"],
+    "辞职": ["解除劳动合同", "劳动者解除"],
+    "裁员": ["经济性裁员", "裁减人员"],
+    # ── Civil / daily life ──
+    "高空抛物": ["抛掷物品", "抛掷", "建筑物中抛掷"],
+    "租房": ["租赁", "租赁合同", "承租", "出租"],
+    "租房合同": ["租赁合同", "承租", "出租"],
+    "合同到期": ["租赁期限届满", "租赁期满", "合同期限届满", "期限届满"],
+    "借钱": ["借款", "民间借贷", "返还借款"],
+    "借钱不还": ["借款", "民间借贷", "返还借款"],
+    "交通事故": ["机动车", "道路交通", "侵权"],
+    # ── Criminal ──
+    "危险驾驶": ["醉酒驾驶", "追逐竞驶", "违规运输危险化学品", "机动车"],
+    "危险驾驶罪": ["醉酒驾驶", "追逐竞驶", "违规运输危险化学品"],
+    "醉驾": ["醉酒驾驶", "危险驾驶"],
+    "盗窃": ["盗窃罪", "盗窃公私财物"],
+    # ── General ──
+    "试用期": ["试用期间"],
+    "工伤": ["工伤保险", "因工受伤", "因工负伤"],
+    "最低工资": ["最低工资标准", "当地最低工资"],
+    "年休假": ["带薪年休假", "年假"],
+    "年假": ["带薪年休假", "年休假"],
 }
 
 
