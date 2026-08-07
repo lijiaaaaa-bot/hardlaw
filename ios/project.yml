@@ -15,6 +15,9 @@ packages:
   mlx-libraries:
     url: https://github.com/mlx-community/mlx-libraries
     from: "1.0.0"
+  swift-transformers:
+    url: https://github.com/huggingface/swift-transformers
+    from: "1.1.6"
 
 targets:
   HardlawKit:
