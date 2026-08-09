@@ -18,6 +18,9 @@ targets:
     sources:
       - path: HardlawKit/Sources
       - path: HardlawKit/Vision
+      - path: HardlawKit/Vision/CoreMLModels
+        type: folder
+        buildPhase: resources
     settings:
       base:
         GENERATE_INFOPLIST_FILE: true
