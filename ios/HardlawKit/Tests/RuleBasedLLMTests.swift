@@ -89,11 +89,5 @@ final class RuleBasedLLMTests: XCTestCase {
         XCTAssertTrue(allValid, "Rule-based evidence refs should be verifiable since snippets come from actual content")
     }
 
-    // MARK: - CapabilityDetector
 
-    func testCapabilityDetectorRecommendsBackend() {
-        let backend = CapabilityDetector.recommendedBackend()
-        // On simulator/CI, this will fall back to ruleBased (insufficient memory)
-        XCTAssertTrue([.ruleBased, .mlxLLM].contains(backend))
-    }
 }

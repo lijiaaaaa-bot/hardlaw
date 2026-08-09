@@ -10,8 +10,7 @@ import Foundation
 /// | Backend | Description | Latency | Requirements |
 /// |---------|-------------|---------|--------------|
 /// | ``MockLLM`` | Scripted responses for testing | <1ms | None |
-/// | ``RuleBasedLLM`` | Deterministic regex detection | <1ms | None |
-/// | ``MLXLLM`` | On-device MLX (Qwen2.5-0.5B-Instruct 4-bit) | 30-90s | mlx-libraries, 4GB+ RAM |
+/// | ``RuleBasedLLM`` | Deterministic rule engine | <1ms | None |
 ///
 /// ## Creating a New Backend
 ///

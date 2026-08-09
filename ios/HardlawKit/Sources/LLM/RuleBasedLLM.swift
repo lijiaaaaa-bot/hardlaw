@@ -111,31 +111,5 @@ public actor RuleBasedLLM: LLMBackend {
     }
 }
 
-// MARK: - CapabilityDetector
 
-/// Detects device capabilities for LLM backends.
-public enum CapabilityDetector {
 
-    /// Check if on-device MLX LLM can run on this device.
-    /// Requires iOS 17.0+ and sufficient memory.
-    public static func canRunMLXLLM() -> Bool {
-        // Memory check: need at least 4 GB for 0.5B model
-        let physicalMemory = ProcessInfo.processInfo.physicalMemory
-        let minMemory: UInt64 = 3 * 1024 * 1024 * 1024 // 3 GB (conservative)
-        return physicalMemory > minMemory
-    }
-
-    /// Get the recommended backend based on device capabilities.
-    public static func recommendedBackend() -> RecommendedBackend {
-        if canRunMLXLLM() {
-            return .mlxLLM
-        }
-        return .ruleBased
-    }
-}
-
-public enum RecommendedBackend: String, Sendable {
-    case ruleBased = "Rule-Based"
-    case mlxLLM = "On-Device MLX"
-    case appleIntelligence = "Apple Intelligence"
-}

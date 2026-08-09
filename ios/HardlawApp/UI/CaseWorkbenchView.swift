@@ -152,8 +152,7 @@ struct CaseWorkbenchView: View {
         isProcessing = true
         Task {
             if intent.kind == .fullReview || text.contains("审查") {
-                let goal = await makeReviewGoal()
-                runGoal(goal)
+                runGoal(makeReviewGoal())
                 return
             }
             if let result = await executeIntent(intent) {
@@ -190,24 +189,13 @@ struct CaseWorkbenchView: View {
         }
     }
 
-    func makeReviewGoal() async -> Goal {
-        // Haidian 双模型：Planner(大模型) 智能分解 Goal
-        let planner = OllamaClient(model: "qwen3:14b")
-        let ctx = "案由:\(caseFile.caseName) 证据:\(caseFile.evidenceItems.count)项 请求:\(caseFile.claims.map(\.content).joined(separator:";"))"
-        if let plan = try? await planner.plan(goal: "审查案件证据链完整性", context: ctx),
-           !plan.steps.isEmpty {
-            let steps = plan.steps.compactMap { s -> GoalStep? in
-                GoalStepKind(rawValue: s.kind).map { GoalStep(name: s.name, detail: s.detail, kind: $0) }
-            }
-            if !steps.isEmpty { return Goal(description: "审查 \(caseFile.caseName)", steps: steps) }
-        }
-        // Fallback
+    func makeReviewGoal() -> Goal {
         var steps: [GoalStep] = [
             GoalStep(name: "验证引用出处", detail: "逐字核对原文", kind: .verifyCitations),
             GoalStep(name: "检测证据缺口", detail: "劳动关系、工资、混同", kind: .detectGaps),
         ]
-        if caseFile.evidenceItems.filter({ ($0.proofContentState.displayValue?.isEmpty ?? true) }).count > 0 {
-            steps.insert(GoalStep(name: "生成证据目录", detail: "草拟目录", kind: .generateCatalog), at: 0)
+        if caseFile.evidenceItems.contains(where: { ($0.proofContentState.displayValue?.isEmpty ?? true) }) {
+            steps.insert(GoalStep(name: "生成证据目录", detail: "\(caseFile.evidenceItems.count) 项", kind: .generateCatalog), at: 0)
         }
         if caseFile.evidenceItems.filter({ $0.name.contains("工资") || ($0.proofContentState.displayValue ?? "").contains("元") }).count >= 2 {
             steps.append(GoalStep(name: "工资一致性检查", detail: "交叉比对", kind: .checkConsistency))
@@ -285,8 +273,8 @@ struct CaseWorkbenchView: View {
             let cites = results.map { "\($0.chunk.lawID)第\($0.chunk.articleNum)条" }
             caseData["legal_citations"] = .string(cites.joined(separator: "; "))
         }
-        // Haidian 双模型: Planner(Judge 用 0.6B 小模型)
-        let llm: any LLMBackend = OllamaClient(model: "qwen3:0.6b")
+        // 确定性规则引擎 — 全部本地，零网络
+        let llm: any LLMBackend = RuleBasedLLM(rules: RuleBasedLLM.defaultRules())
         let court = Court(statutes: statutes, procedure: procedure, llm: llm)
         return await court.hear(caseData: caseData)
     }
