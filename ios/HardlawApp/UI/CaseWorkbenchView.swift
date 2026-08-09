@@ -279,7 +279,7 @@ struct CaseWorkbenchView: View {
             let cites = results.map { "\($0.chunk.lawID)第\($0.chunk.articleNum)条" }
             caseData["legal_citations"] = .string(cites.joined(separator: "; "))
         }
-        let llm: any LLMBackend = RuleBasedLLM(rules: RuleBasedLLM.defaultRules())
+        let llm: any LLMBackend = LocalMLXClient(host: "127.0.0.1", port: 8766)
         let court = Court(statutes: statutes, procedure: procedure, llm: llm)
         return await court.hear(caseData: caseData)
     }
