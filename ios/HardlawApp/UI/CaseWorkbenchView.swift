@@ -149,13 +149,14 @@ struct CaseWorkbenchView: View {
             statusMessage = "试试：补充银行流水 / 生成目录 / 检查工资 / 全面复核"
             return
         }
-        // Goal-driven: "审查"/"全面复核" triggers full plan-execute-verify
-        if intent.kind == .fullReview || text.contains("审查") {
-            runGoal(makeReviewGoal())
-            return
-        }
         isProcessing = true
         Task {
+            // Goal-driven: "审查"/"全面复核" triggers full plan-execute-verify
+            if intent.kind == .fullReview || text.contains("审查") {
+                let goal = await makeReviewGoal()
+                runGoal(goal)
+                return
+            }
             if let result = await executeIntent(intent) {
                 applyVerdicts(result)
                 statusMessage = summary(from: result)
@@ -190,7 +191,25 @@ struct CaseWorkbenchView: View {
         }
     }
 
-    func makeReviewGoal() -> Goal {
+    func makeReviewGoal() async -> Goal {
+        // Try Ollama planner (large model) for intelligent step decomposition
+        let planner = OllamaClient(model: "qwen3:14b")
+        let context = """
+        案件: \(caseFile.caseName)
+        证据: \(caseFile.evidenceItems.count) 项
+        请求: \(caseFile.claims.map(\.content).joined(separator: "; "))
+        """
+        if let plan = try? await planner.plan(goal: "审查案件证据链完整性", context: context),
+           !plan.steps.isEmpty {
+            let steps = plan.steps.compactMap { s -> GoalStep? in
+                guard let kind = GoalStepKind(rawValue: s.kind) else { return nil }
+                return GoalStep(name: s.name, detail: s.detail, kind: kind)
+            }
+            if !steps.isEmpty {
+                return Goal(description: "审查 \(caseFile.caseName)", steps: steps)
+            }
+        }
+        // Fallback: static steps if Ollama unreachable
         var steps: [GoalStep] = []
         let needsDrafting = caseFile.evidenceItems.filter {
             ($0.proofContentState.displayValue?.isEmpty ?? true)
@@ -279,7 +298,8 @@ struct CaseWorkbenchView: View {
             let cites = results.map { "\($0.chunk.lawID)第\($0.chunk.articleNum)条" }
             caseData["legal_citations"] = .string(cites.joined(separator: "; "))
         }
-        let llm: any LLMBackend = LocalMLXClient(host: "127.0.0.1", port: 8766)
+        // Ollama dual-model: judge uses small/fast model
+        let llm: any LLMBackend = OllamaClient(model: "qwen3:0.6b")
         let court = Court(statutes: statutes, procedure: procedure, llm: llm)
         return await court.hear(caseData: caseData)
     }
