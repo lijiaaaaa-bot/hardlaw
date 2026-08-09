@@ -1,140 +1,88 @@
 import Foundation
 import HardlawKit
 
-// MARK: - Ollama LLM Backend
+// MARK: - Ollama 本地模型客户端
 
-/// Calls a local Ollama instance. Model runs on this Mac's GPU.
-/// Zero cloud — data stays on this machine.
+/// Haidian 模式：本地 Ollama 双模型驱动 Goal-Driven 循环。
 ///
-/// Dual-model architecture (Haidian pattern):
-///   Planner (large): decomposes goal → structured step list
-///   Judge (small):   executes each step via Court.hear()
+/// 架构：
+///   Planner (大模型):  分解 Goal → 结构化步骤 JSON
+///   Judge  (小模型):   执行每个步骤，生成 Verdict
+///
+/// Ollama 已在 Mac 上运行，模型已在本地磁盘。零网络，零云端。
 public actor OllamaClient: LLMBackend {
 
-    private let baseURL: URL
+    private let baseURL = URL(string: "http://127.0.0.1:11434/api")!
     private let model: String
-    private let session: URLSession
-    private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
+    private let session: URLSession
 
-    public init(model: String = "qwen3:0.6b", host: String = "127.0.0.1", port: Int = 11434) {
+    public init(model: String) {
         self.model = model
-        self.baseURL = URL(string: "http://\(host):\(port)/api")!
         self.session = URLSession(configuration: .default)
     }
 
-    // MARK: - LLMBackend
+    // MARK: - LLMBackend (Judge)
 
     public func judge(_ prompt: String) async throws -> String {
-        var request = URLRequest(url: baseURL.appendingPathComponent("chat"))
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 120
-
-        let body = OllamaChatRequest(
-            model: model,
-            messages: [.init(role: "user", content: prompt)],
-            stream: false,
-            options: .init(temperature: 0.1, num_predict: 500)
-        )
-        request.httpBody = try encoder.encode(body)
-
-        let (data, response) = try await session.data(for: request)
-        guard let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 else {
-            throw OllamaError.serverError(String(data: data, encoding: .utf8) ?? "")
-        }
-        let result = try decoder.decode(OllamaChatResponse.self, from: data)
-        return result.message.content
+        try await chat(prompt, temperature: 0.1, maxTokens: 500)
     }
 
-    // MARK: - Planner (large model for goal decomposition)
+    // MARK: - Planner
 
-    /// Use a larger model to decompose a high-level goal into structured steps.
-    /// This is the "Planner" of the dual-model architecture.
+    /// 用大模型分解 Goal 为结构化步骤。
     public func plan(goal: String, context: String) async throws -> OllamaPlan {
         let prompt = """
-        你是一个法律案件审查规划器。根据用户的目标和案件背景，将任务分解为具体的、可验证的步骤。
+        你是法律案件审查规划器。根据用户目标和案件信息，将任务分解为具体的、可验证的审查步骤。
 
-        ## 用户目标
-        \(goal)
+        用户目标：\(goal)
+        案件信息：\(context)
 
-        ## 案件背景
-        \(context)
-
-        ## 要求
-        返回一个 JSON 数组，每个元素是一个步骤。格式：
-        {
-          "steps": [
-            {
-              "name": "步骤中文名称",
-              "detail": "具体要检查什么",
-              "kind": "generateCatalog|verifyCitations|detectGaps|checkConsistency",
-              "reasoning": "为什么需要这一步"
-            }
-          ]
-        }
-
-        只返回 JSON，不要其他文字。
+        返回 JSON（只返回 JSON，不要其他文字）：
+        {"steps":[{"name":"步骤名称","detail":"具体检查内容","kind":"verifyCitations|detectGaps|checkConsistency","reasoning":"为什么需要这步"}]}
         """
-
-        var request = URLRequest(url: baseURL.appendingPathComponent("chat"))
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 180
-
-        let body = OllamaChatRequest(
-            model: model,
-            messages: [.init(role: "user", content: prompt)],
-            stream: false,
-            options: .init(temperature: 0.1, num_predict: 2000)
-        )
-        request.httpBody = try encoder.encode(body)
-
-        let (data, response) = try await session.data(for: request)
-        guard let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 else {
-            throw OllamaError.serverError(String(data: data, encoding: .utf8) ?? "")
-        }
-        let result = try decoder.decode(OllamaChatResponse.self, from: data)
-        let json = extractJSON(from: result.message.content)
+        let text = try await chat(prompt, temperature: 0.1, maxTokens: 2000)
+        let json = extractJSON(from: text)
         return try decoder.decode(OllamaPlan.self, from: json.data(using: .utf8)!)
     }
 
+    // MARK: - Core
+
+    private func chat(_ prompt: String, temperature: Double, maxTokens: Int) async throws -> String {
+        var req = URLRequest(url: baseURL.appendingPathComponent("chat"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 180
+        let body: [String: Any] = [
+            "model": model,
+            "messages": [["role": "user", "content": prompt]],
+            "stream": false,
+            "options": ["temperature": temperature, "num_predict": maxTokens]
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, resp) = try await session.data(for: req)
+        guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
+            throw OllamaError.serverError(String(data: data, encoding: .utf8) ?? "")
+        }
+        let msg = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        guard let message = msg?["message"] as? [String: Any],
+              let content = message["content"] as? String else {
+            throw OllamaError.serverError("unexpected response format")
+        }
+        return content
+    }
+
     private func extractJSON(from text: String) -> String {
-        if let start = text.firstIndex(of: "{"),
-           let end = text.lastIndex(of: "}") {
+        if let start = text.firstIndex(of: "{"), let end = text.lastIndex(of: "}") {
             return String(text[start...end])
         }
         return text
     }
 }
 
-// MARK: - Data Types
+// MARK: - Types
 
-struct OllamaChatRequest: Codable {
-    let model: String
-    let messages: [OllamaMessage]
-    let stream: Bool
-    let options: OllamaOptions
-
-    struct OllamaMessage: Codable {
-        let role: String
-        let content: String
-    }
-
-    struct OllamaOptions: Codable {
-        let temperature: Double?
-        let num_predict: Int?
-    }
-}
-
-struct OllamaChatResponse: Codable {
-    let message: OllamaMessageResponse
-    struct OllamaMessageResponse: Codable {
-        let content: String
-    }
-}
-
-/// Planner output: structured steps for goal execution.
 public struct OllamaPlan: Codable, Sendable {
     public let steps: [OllamaPlanStep]
 }
