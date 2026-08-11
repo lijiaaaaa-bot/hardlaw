@@ -168,7 +168,106 @@ public enum LaborLawStatutes {
         defaultToReject: true, blocking: true
     )
 
+    // MARK: - 扩展法条（P2-4）
+
+    /// 双倍工资差额（《劳动合同法》第82条）
+    public static let doubleSalary = Statute(
+        name: "双倍工资差额",
+        description: "依据《劳动合同法》第82条：用人单位自用工之日起超过一个月不满一年未订立书面劳动合同的，应向劳动者每月支付二倍的工资（最长11个月）。满一年未签合同的视为已订立无固定期限合同（第82条第2款）。",
+        requiredEvidence: [
+            EvidenceRequirement(evidence: "入职日期", holder: .worker, onMissing: .flag),
+            EvidenceRequirement(evidence: "书面劳动合同签订日期", holder: .worker, onMissing: .flag,
+                alternatives: [EvidenceRequirement("未签合同的书面说明")], minCount: 1),
+            EvidenceRequirement(evidence: "月工资标准", holder: .employer, onMissing: .flag,
+                burdenBasis: "《劳动争议调解仲裁法》第6条"),
+        ],
+        violations: [
+            ViolationType(name: "未签合同期间超11个月", severity: .high,
+                description: "满一年未签合同视为已订立无固定期限合同，双倍工资最长11个月"),
+            ViolationType(name: "双倍工资时效争议", severity: .medium,
+                description: "双倍工资时效按月计算还是按总额计算存在地区差异")
+        ],
+        defaultToReject: false, blocking: false
+    )
+
+    /// 加班费（《劳动法》第44条 + 司法解释一第42条）
+    public static let overtimePay = Statute(
+        name: "加班费",
+        description: "依据《劳动法》第44条：工作日加班150%、休息日加班200%、法定节假日加班300%。依司法解释一（法释〔2020〕26号）第42条，加班事实的举证责任在劳动者，用人单位掌握管理的加班审批记录由用人单位提供。",
+        requiredEvidence: [
+            EvidenceRequirement(evidence: "加班记录/打卡记录", holder: .employer, onMissing: .flag,
+                burdenBasis: "法释〔2020〕26号司法解释一第42条"),
+            EvidenceRequirement(evidence: "月工资标准", holder: .employer, onMissing: .flag),
+        ],
+        violations: [
+            ViolationType(name: "加班基数争议", severity: .high,
+                description: "加班费计算基数应按劳动合同约定的工资标准，不含福利性补贴"),
+            ViolationType(name: "加班事实举证不足", severity: .medium,
+                description: "劳动者应就加班事实的存在承担初步举证责任")
+        ],
+        defaultToReject: false, blocking: false
+    )
+
+    /// 未休年休假工资（《职工带薪年休假条例》第5条）
+    public static let unusedAnnualLeave = Statute(
+        name: "未休年休假工资",
+        description: "依据《职工带薪年休假条例》第5条和《企业职工带薪年休假实施办法》第10条：单位应按职工日工资收入的300%支付未休年休假工资报酬（含正常工作期间的工资收入，即额外支付200%）。",
+        requiredEvidence: [
+            EvidenceRequirement(evidence: "工龄/工作年限证明", holder: .employer, onMissing: .flag,
+                burdenBasis: "《劳动争议调解仲裁法》第6条"),
+            EvidenceRequirement(evidence: "年休假申请/审批记录", holder: .employer, onMissing: .flag),
+            EvidenceRequirement(evidence: "月工资标准", holder: .worker, onMissing: .flag),
+        ],
+        violations: [
+            ViolationType(name: "年休假天数争议", severity: .medium,
+                description: "累计工作满1年不满10年→5天，满10年不满20年→10天，满20年→15天"),
+            ViolationType(name: "未休年假时效争议", severity: .medium,
+                description: "未休年休假工资属于劳动报酬（适用特殊时效）还是福利待遇（适用一般时效）存在地区分歧")
+        ],
+        defaultToReject: false, blocking: false
+    )
+
+    /// 违法解除赔偿金 2N（《劳动合同法》第87条）
+    public static let wrongfulTermination = Statute(
+        name: "违法解除赔偿金",
+        description: "依据《劳动合同法》第87条：用人单位违反本法规定解除或终止劳动合同的，应依照第47条经济补偿标准的二倍支付赔偿金（2N）。注意：第87条赔偿金与第47条经济补偿金不能兼得。",
+        requiredEvidence: [
+            EvidenceRequirement(evidence: "解除/终止劳动合同通知书", holder: .worker, onMissing: .block),
+            EvidenceRequirement(evidence: "解除理由不成立的证据", holder: .worker, onMissing: .flag),
+            EvidenceRequirement(evidence: "工资银行流水", holder: .worker, onMissing: .flag),
+        ],
+        violations: [
+            ViolationType(name: "2N与N混淆", severity: .critical,
+                description: "注意区分第47条经济补偿（N、N+1）和第87条违法解除赔偿（2N），两者不能兼得"),
+            ViolationType(name: "解除理由合法性争议", severity: .high,
+                description: "解除是否'违反本法规定'需结合第39-42条综合判断")
+        ],
+        defaultToReject: false, blocking: false
+    )
+
+    /// 代通知金（《劳动合同法》第40条，N+1）
+    public static let paymentInLieu = Statute(
+        name: "代通知金",
+        description: "依据《劳动合同法》第40条：用人单位提前三十日书面通知或额外支付一个月工资（代通知金）后可解除劳动合同。适用情形：医疗期满不能从事原工作、不胜任经培训仍不胜任、客观情况重大变化致合同无法履行。",
+        requiredEvidence: [
+            EvidenceRequirement(evidence: "解除通知书", holder: .worker, onMissing: .block),
+            EvidenceRequirement(evidence: "未提前30日通知的证据", holder: .worker, onMissing: .flag),
+            EvidenceRequirement(evidence: "月工资标准", holder: .worker, onMissing: .flag),
+        ],
+        violations: [
+            ViolationType(name: "N+1与2N混淆", severity: .critical,
+                description: "第40条（N+1）是用人单位合法解除的补偿，第87条（2N）是违法解除的赔偿，性质不同不能同时主张"),
+            ViolationType(name: "40条适用情形争议", severity: .high,
+                description: "是否满足第40条的三种情形需个案判断")
+        ],
+        defaultToReject: false, blocking: false
+    )
+
     /// Convenience: statutes for gap detection.
     /// burdenOfProof retired — employer evidence burden is now native to `.employer` holder.
-    public static let gapDetectionBook = StatuteBook(statutes: [arbitrationLimitation, employmentRelationship, wageArrears, mixedEmployment, salaryStandard])
+    public static let gapDetectionBook = StatuteBook(statutes: [
+        arbitrationLimitation, employmentRelationship, wageArrears,
+        mixedEmployment, salaryStandard, doubleSalary, overtimePay,
+        unusedAnnualLeave, wrongfulTermination, paymentInLieu
+    ])
 }
