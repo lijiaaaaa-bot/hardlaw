@@ -224,22 +224,39 @@ public actor Court {
         // Parse verdict (never throws)
         var verdict = VerdictParser.parse(raw)
 
-        // Enforce evidence rules
+        // Enforce evidence rules with burden-of-proof layering
         for statute in statuteList {
-            if !statute.requiredEvidence.isEmpty {
-                let rule = EvidenceRule(
-                    requiredSources: statute.requiredEvidence,
-                    minCitations: 1
-                )
-                let (passed, reason) = rule.validate(verdict.evidenceRefs)
-                if !passed {
+            for req in statute.requiredEvidence {
+                // Check if this requirement is satisfied (primary or alternatives)
+                let allOptions = [req.evidence] + req.alternatives.map(\.evidence)
+                let citedSources = Set(verdict.evidenceRefs.map(\.source))
+                let matched = allOptions.filter { citedSources.contains($0) }
+                if matched.count >= req.minCount { continue } // Satisfied
+
+                // Unsatisfied — route based on holder
+                switch req.holder {
+                case .worker:
+                    // Worker-held evidence missing → fail-closed
                     verdict.refuted = true
                     verdict.blocking = true
                     verdict.blockingKind = BlockingKind.contradiction
-                    verdict.fallbackNote = "Evidence insufficient: \(reason)"
-                    break
+                    verdict.fallbackNote = "Missing worker-held evidence: \(req.evidence)"
+                case .employer:
+                    // Employer-held evidence missing → flag only, don't block worker
+                    let notice = Finding(
+                        kind: "notice",
+                        location: "\(statute.name)/\(req.evidence)",
+                        detail: "该证据由用人单位掌握管理\(req.burdenBasis.map { "（\($0)）" } ?? "")，应由其提供。不作为申请人证据缺口。"
+                    )
+                    verdict.findings.append(notice)
+                case .thirdParty:
+                    // Third-party evidence → mark pending, prompt retry
+                    verdict.fallbackNote = "第三方证据待调取: \(req.evidence)"
                 }
+                // Only .worker blocks the verdict; others add notice and continue
+                if verdict.blocking { break }
             }
+            if verdict.blocking { break }
         }
 
         // Validate cited evidence actually exists

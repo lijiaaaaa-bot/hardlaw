@@ -58,6 +58,66 @@ public enum EscalationAction: String, Codable, Sendable, CaseIterable {
     case block, flag, notify, pause
 }
 
+// MARK: - Evidence Requirement (举证责任分层)
+
+/// Who holds the evidence — determines what happens when it's missing.
+public enum EvidenceHolder: String, Codable, Sendable, CaseIterable {
+    case worker     // 劳动者应自行举证
+    case employer   // 用人单位掌握管理（《劳动争议调解仲裁法》第6条）
+    case thirdParty // 行政机关/第三方，可申请调取
+}
+
+/// What to do when required evidence is missing.
+public enum MissingEvidenceAction: String, Codable, Sendable, CaseIterable {
+    case flag    // 提示缺口+举证责任提示，不阻断
+    case prompt  // 要求补充或申请调取后继续
+    case block   // 阻断，无重试（劳动者自行举证/LLM幻觉）
+}
+
+/// A structured evidence requirement replacing flat `[String]` lists.
+/// Each entry specifies who should provide the evidence, what happens
+/// when it's missing, and what alternatives exist.
+public struct EvidenceRequirement: Codable, Equatable, Sendable {
+    /// Evidence name, e.g. "工资表"
+    public var evidence: String
+    /// Who should provide this evidence
+    public var holder: EvidenceHolder
+    /// Action when evidence is missing
+    public var onMissing: MissingEvidenceAction
+    /// Legal basis for burden assignment
+    public var burdenBasis: String?
+    /// Alternative evidence that satisfies the same requirement
+    public var alternatives: [EvidenceRequirement]
+    /// Minimum number of alternatives (including primary) that must be satisfied
+    public var minCount: Int
+
+    public init(
+        evidence: String,
+        holder: EvidenceHolder = .worker,
+        onMissing: MissingEvidenceAction = .block,
+        burdenBasis: String? = nil,
+        alternatives: [EvidenceRequirement] = [],
+        minCount: Int = 1
+    ) {
+        self.evidence = evidence
+        self.holder = holder
+        self.onMissing = onMissing
+        self.burdenBasis = burdenBasis
+        self.alternatives = alternatives
+        self.minCount = minCount
+    }
+
+    /// Convenience: create a simple worker-held requirement (backward compat).
+    public init(_ evidence: String) {
+        self.evidence = evidence
+        self.holder = .worker
+        self.onMissing = .block
+        self.burdenBasis = nil
+        self.alternatives = []
+        self.minCount = 1
+    }
+}
+
 // MARK: - Statute
 
 /// A named hard rule encoding enforceable constraints on LLM agents.
@@ -70,8 +130,9 @@ public struct Statute: Codable, Equatable, Sendable {
     public var description: String
     /// Multi-dimensional thresholds, e.g. {"confidence_min": "medium"}.
     public var threshold: [String: JSONValue]
-    /// Evidence fields that MUST be cited in any verdict.
-    public var requiredEvidence: [String]
+    /// Evidence requirements (v2: structured with burden layering).
+    /// Backward compatible: old `[String]` decodes to `.worker` + `.block`.
+    public var requiredEvidence: [EvidenceRequirement]
     /// Kinds of violations this statute covers.
     public var violations: [ViolationType]
     /// What happens on repeated violations.
@@ -85,7 +146,7 @@ public struct Statute: Codable, Equatable, Sendable {
         name: String,
         description: String = "",
         threshold: [String: JSONValue] = [:],
-        requiredEvidence: [String] = [],
+        requiredEvidence: [EvidenceRequirement] = [],
         violations: [ViolationType] = [],
         escalation: EscalationRule = EscalationRule(),
         defaultToReject: Bool = true,
@@ -110,13 +171,21 @@ public struct Statute: Codable, Equatable, Sendable {
         case blocking
     }
 
-    // Custom decoding to provide Python-identical defaults for missing keys
+    // Custom decoding with backward compatibility for old `[String]` format
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         name = try container.decode(String.self, forKey: .name)
         description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
         threshold = try container.decodeIfPresent([String: JSONValue].self, forKey: .threshold) ?? [:]
-        requiredEvidence = try container.decodeIfPresent([String].self, forKey: .requiredEvidence) ?? []
+        // Backward compat: try new [EvidenceRequirement] format first,
+        // fall back to old [String] format (each string → .worker + .block)
+        if let reqs = try? container.decode([EvidenceRequirement].self, forKey: .requiredEvidence) {
+            requiredEvidence = reqs
+        } else if let strings = try? container.decode([String].self, forKey: .requiredEvidence) {
+            requiredEvidence = strings.map { EvidenceRequirement($0) }
+        } else {
+            requiredEvidence = []
+        }
         violations = try container.decodeIfPresent([ViolationType].self, forKey: .violations) ?? []
         escalation = try container.decodeIfPresent(EscalationRule.self, forKey: .escalation) ?? EscalationRule()
         defaultToReject = try container.decodeIfPresent(Bool.self, forKey: .defaultToReject) ?? true
@@ -129,7 +198,12 @@ public struct Statute: Codable, Equatable, Sendable {
             "name": name,
             "description": description,
             "threshold": threshold.mapValues { $0 },
-            "required_evidence": requiredEvidence,
+            "required_evidence": requiredEvidence.map { req in
+                var d: [String: Any] = ["evidence": req.evidence, "holder": req.holder.rawValue, "on_missing": req.onMissing.rawValue]
+                if let b = req.burdenBasis { d["burden_basis"] = b }
+                if !req.alternatives.isEmpty { d["alternatives"] = req.alternatives.map { $0.evidence } }
+                return d
+            },
             "violations": violations.map { v in
                 [
                     "name": v.name,
@@ -174,7 +248,7 @@ public struct Statute: Codable, Equatable, Sendable {
             name: data["name"] as? String ?? "",
             description: data["description"] as? String ?? "",
             threshold: (data["threshold"] as? [String: Any] ?? [:]).mapValues { parseJSONPrimitive($0) },
-            requiredEvidence: data["required_evidence"] as? [String] ?? [],
+            requiredEvidence: parseRequiredEvidence(data["required_evidence"]),
             violations: violations,
             escalation: escalation,
             defaultToReject: data["default_to_reject"] as? Bool ?? true,
@@ -195,4 +269,27 @@ private func parseJSONPrimitive(_ value: Any) -> JSONValue {
     case is NSNull: return .null
     default: return .string("\(value)")
     }
+}
+
+/// Parse required_evidence from dict — handles both old `[String]` and new structured format.
+private func parseRequiredEvidence(_ value: Any?) -> [EvidenceRequirement] {
+    // New format: array of dicts
+    if let dicts = value as? [[String: Any]] {
+        return dicts.compactMap { d in
+            guard let evidence = d["evidence"] as? String else { return nil }
+            return EvidenceRequirement(
+                evidence: evidence,
+                holder: EvidenceHolder(rawValue: d["holder"] as? String ?? "worker") ?? .worker,
+                onMissing: MissingEvidenceAction(rawValue: d["on_missing"] as? String ?? "block") ?? .block,
+                burdenBasis: d["burden_basis"] as? String,
+                alternatives: (d["alternatives"] as? [String])?.map { EvidenceRequirement($0) } ?? [],
+                minCount: d["min_count"] as? Int ?? 1
+            )
+        }
+    }
+    // Old format: array of strings
+    if let strings = value as? [String] {
+        return strings.map { EvidenceRequirement($0) }
+    }
+    return []
 }
