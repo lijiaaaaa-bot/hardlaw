@@ -246,10 +246,10 @@ public actor Court {
         if !verdict.evidenceRefs.isEmpty {
             let (allValid, _) = evidenceValidator.validateAll(verdict.evidenceRefs)
             if !allValid {
-                // Force reject on unverifiable evidence if any statute defaults to reject
-                if statuteList.contains(where: { $0.defaultToReject }) {
-                    verdict.refuted = true
-                }
+                // Force reject on unverifiable evidence — fail-closed invariant.
+                // An LLM citing evidence that doesn't exist in the source material
+                // is a hallucination and must never result in a passing verdict.
+                verdict.refuted = true
             }
         }
 

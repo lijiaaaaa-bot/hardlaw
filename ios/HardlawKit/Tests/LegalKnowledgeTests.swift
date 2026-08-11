@@ -7,14 +7,12 @@ final class LegalKnowledgeTests: XCTestCase {
     // MARK: - LawStore
 
     func testLoadFromBundle() async throws {
-        let store = LawStore()
-        try store.load(from: testBundle())
+        let store = try LawStore(bundle: testBundle())
         XCTAssertTrue(store.chunkCount > 10_000)
     }
 
     func testKeywordSearchLaborLaw() async throws {
-        let store = LawStore()
-        try store.load(from: testBundle())
+        let store = try LawStore(bundle: testBundle())
         let results = store.searchKeyword("加班费计算标准", limit: 10)
         XCTAssertTrue(!results.isEmpty)
         let hasRelevant = results.contains { $0.chunk.text.contains("加班费") || $0.chunk.text.contains("延长工作时间") }
@@ -22,24 +20,21 @@ final class LegalKnowledgeTests: XCTestCase {
     }
 
     func testKeywordSearchProbation() async throws {
-        let store = LawStore()
-        try store.load(from: testBundle())
+        let store = try LawStore(bundle: testBundle())
         let results = store.searchKeyword("试用期最长多久", limit: 5)
         let topChunk = try XCTUnwrap(results.first?.chunk)
         XCTAssertTrue(topChunk.text.contains("试用期"))
     }
 
     func testKeywordSearchMaternityLeave() async throws {
-        let store = LawStore()
-        try store.load(from: testBundle())
+        let store = try LawStore(bundle: testBundle())
         let results = store.searchKeyword("女职工产假多少天", limit: 5)
         let topChunk = try XCTUnwrap(results.first?.chunk)
         XCTAssertTrue(topChunk.text.contains("产假") || topChunk.text.contains("女职工"))
     }
 
     func testChunkLookupByLaw() async throws {
-        let store = LawStore()
-        try store.load(from: testBundle())
+        let store = try LawStore(bundle: testBundle())
         let chunks = store.chunks(for: "劳动法")
         XCTAssertTrue(!chunks.isEmpty)
         XCTAssertTrue(chunks.count >= 100)
@@ -48,16 +43,14 @@ final class LegalKnowledgeTests: XCTestCase {
     // MARK: - LawIndex
 
     func testLoadVectors() async throws {
-        let store = LawStore()
-        try store.load(from: testBundle())
+        let store = try LawStore(bundle: testBundle())
         let index = LawIndex(store: store)
         try index.loadVectors(from: testBundle())
         XCTAssertTrue(index.vectorCount > 10_000)
     }
 
     func testKeywordOnlySearch() async throws {
-        let store = LawStore()
-        try store.load(from: testBundle())
+        let store = try LawStore(bundle: testBundle())
         let index = LawIndex(store: store)
         let results = await index.search("未签劳动合同的双倍工资", k: 5)
         XCTAssertTrue(!results.isEmpty)
@@ -66,8 +59,7 @@ final class LegalKnowledgeTests: XCTestCase {
     }
 
     func testUnliteralDismissalSearch() async throws {
-        let store = LawStore()
-        try store.load(from: testBundle())
+        let store = try LawStore(bundle: testBundle())
         let index = LawIndex(store: store)
         let results = await index.search("用人单位单方解除劳动合同", k: 5)
         XCTAssertTrue(!results.isEmpty)
@@ -78,8 +70,7 @@ final class LegalKnowledgeTests: XCTestCase {
     // MARK: - Tokenization
 
     func testChineseWordSegmentation() async throws {
-        let store = LawStore()
-        try store.load(from: testBundle())
+        let store = try LawStore(bundle: testBundle())
         let tokens = store.tokenize("未签劳动合同的双倍工资")
         XCTAssertTrue(!tokens.isEmpty)
         // NLTokenizer segments 劳动合同 as the words 劳动 + 合同
@@ -90,8 +81,7 @@ final class LegalKnowledgeTests: XCTestCase {
     }
 
     func testStopWordFiltering() async throws {
-        let store = LawStore()
-        try store.load(from: testBundle())
+        let store = try LawStore(bundle: testBundle())
         let tokens = store.tokenize("拖欠工资怎么办")
         XCTAssertTrue(!tokens.contains("怎么办"))
         // NLTokenizer segments 拖欠工资 as the words 拖欠 + 工资
@@ -108,8 +98,7 @@ final class LegalKnowledgeTests: XCTestCase {
     private let keywordMissQuery = String(repeating: "\u{E000}", count: 4)
 
     func testSemanticSearchContributesResultsWhenKeywordMisses() async throws {
-        let store = LawStore()
-        try store.load(from: testBundle())
+        let store = try LawStore(bundle: testBundle())
         let (firstID, firstVector) = try firstDocumentVector(from: testBundle())
         let index = LawIndex(store: store)
         try index.loadVectors(from: testBundle())
@@ -129,8 +118,7 @@ final class LegalKnowledgeTests: XCTestCase {
     }
 
     func testSemanticSearchExactMatchRanksFirst() async throws {
-        let store = LawStore()
-        try store.load(from: testBundle())
+        let store = try LawStore(bundle: testBundle())
         let (firstID, firstVector) = try firstDocumentVector(from: testBundle())
         let index = LawIndex(store: store)
         try index.loadVectors(from: testBundle())
@@ -146,8 +134,7 @@ final class LegalKnowledgeTests: XCTestCase {
     }
 
     func testSearchWiresProviderAndVectorsLazily() async throws {
-        let store = LawStore()
-        try store.load(from: testBundle())
+        let store = try LawStore(bundle: testBundle())
         let index = LawIndex(store: store)
 
         // search() must self-attach the CoreML embedding provider and load

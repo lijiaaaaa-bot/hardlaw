@@ -16,6 +16,7 @@ public final class CaseFile: Identifiable, Hashable {
     public var claims: [ClaimItem]        // 仲裁请求列表
     public var evidenceItems: [EvidenceItem]  // 证据目录
     public var gaps: [GapItem]            // 待核实问题
+    public var facts: [String]           // 用户陈述的案件事实（自然语言录入）
     /// 证据版本计数器 — 每次新增证据时递增。
     /// FieldState.merge(basedOnEvidenceVersion:) 用它记录 AI 建议基于的证据版本，
     /// 以便在新证据加入后把受影响字段标记为 stale。
@@ -41,7 +42,8 @@ public final class CaseFile: Identifiable, Hashable {
         applicant: String = "",
         respondent: String = "",
         claims: [ClaimItem] = [],
-        evidenceItems: [EvidenceItem] = []
+        evidenceItems: [EvidenceItem] = [],
+        facts: [String] = []
     ) {
         self.id = UUID()
         self.caseName = caseName
@@ -51,6 +53,7 @@ public final class CaseFile: Identifiable, Hashable {
         self.claims = claims
         self.evidenceItems = evidenceItems
         self.gaps = []
+        self.facts = facts
         self.evidenceVersion = 0
     }
 }

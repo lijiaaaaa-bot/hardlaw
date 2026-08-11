@@ -91,10 +91,10 @@ public enum LaborLawStatutes {
     public static let additionalCompensation = Statute(
         name: "加付赔偿金",
         description: "依据《劳动合同法》第85条：用人单位逾期不支付劳动报酬的，责令其按应付金额50%-100%加付赔偿金",
-        requiredEvidence: ["行政处罚告知书", "工资银行流水"],
+        requiredEvidence: ["劳动行政部门责令限期支付决定", "工资银行流水"],
         violations: [
             ViolationType(name: "行政责令已下达", severity: .critical,
-                description: "劳动行政部门已下达限期改正指令，用人单位逾期未履行")
+                description: "劳动行政部门已下达责令限期支付决定，用人单位逾期未履行（《劳动合同法》第85条前置程序）")
         ],
         defaultToReject: false, blocking: false
     )
@@ -113,8 +113,26 @@ public enum LaborLawStatutes {
         defaultToReject: true, blocking: true
     )
 
-        /// Convenience: statutes for gap detection.
-    public static let gapDetectionBook = StatuteBook(statutes: [employmentRelationship, wageArrears, mixedEmployment, salaryStandard])
+        /// 仲裁时效（《劳动争议调解仲裁法》第27条）
+    /// 劳动关系存续期间主张劳动报酬不受一年限制；终止后一年内必须申请。
+    public static let arbitrationLimitation = Statute(
+        name: "仲裁时效",
+        description: "依据《劳动争议调解仲裁法》第27条：劳动争议申请仲裁的时效期间为一年，从知道或应当知道权利被侵害之日起算。劳动关系存续期间因拖欠劳动报酬发生争议的，不受一年限制；劳动关系终止的，应在终止之日起一年内提出。",
+        requiredEvidence: ["劳动关系终止日期"],
+        violations: [
+            ViolationType(name: "时效即将届满", severity: .critical,
+                description: "距仲裁时效届满不足30日，应立即申请仲裁或取得时效中断证据"),
+            ViolationType(name: "时效可能已过", severity: .critical,
+                description: "劳动关系终止后超过一年，全部请求可能面临时效抗辩"),
+            ViolationType(name: "时效中断证据缺失", severity: .high,
+                description: "主张时效中断（主张权利、承诺履行、提起诉讼）但缺乏相应证据")
+        ],
+        escalation: EscalationRule(maxViolations: 1, action: .block),
+        defaultToReject: true, blocking: true
+    )
+
+    /// Convenience: statutes for gap detection.
+    public static let gapDetectionBook = StatuteBook(statutes: [arbitrationLimitation, employmentRelationship, wageArrears, mixedEmployment, salaryStandard])
 
     /// 举证责任提示（程序性规则，非实质性 statute）
     public static let burdenOfProof = Statute(

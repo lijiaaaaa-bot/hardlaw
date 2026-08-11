@@ -133,6 +133,21 @@ final class CourtViewModel {
                 roundCount: 1
             )
         case .detectGaps:
+            // Fallback 模式（RuleBasedLLM）：使用确定性缺口检查作为保底产出。
+            // MLX 模式：走完整 LLM 审理流程。
+            if llm is RuleBasedLLM {
+                let gaps = IntentParser.findCommonGaps(caseFile)
+                if !gaps.isEmpty {
+                    for g in gaps { caseFile.gaps.append(g) }
+                    statusMessage = "已检测 \(gaps.count) 个常见证据缺口"
+                } else {
+                    statusMessage = "未发现常见证据缺口"
+                }
+                return CaseResult(caseId: "detect-gaps-deterministic",
+                    verdicts: [], finalDisposition: .approved,
+                    reason: gaps.isEmpty ? "确定性检查未发现缺口" : "发现 \(gaps.count) 个缺口",
+                    roundCount: 1)
+            }
             do {
                 let proc = try CourtProcedures.gapDetection()
                 return await runCourt(proc, statutes: LaborLawStatutes.gapDetectionBook)
@@ -206,8 +221,13 @@ final class CourtViewModel {
             statusMessage = "引用验证完成"
             return nil
         default:
-            let r = IntentHandler.handle(intent, caseFile: caseFile)
-            statusMessage = r.message
+            if intent.kind == .addFact, !intent.originalText.isEmpty {
+                caseFile.facts.append(intent.originalText)
+                statusMessage = "已记录事实（共\(caseFile.facts.count)条）。可输入「生成目录」或「全面复核」"
+            } else {
+                let r = IntentHandler.handle(intent, caseFile: caseFile)
+                statusMessage = r.message
+            }
             return nil
         }
     }
@@ -234,6 +254,10 @@ final class CourtViewModel {
         }
         for claim in caseFile.claims {
             caseData["claim_\(claim.claimNumber)"] = .string(claim.content)
+        }
+        // 用户陈述的案件事实（自然语言录入）
+        if !caseFile.facts.isEmpty {
+            caseData["case_facts"] = .string(caseFile.facts.joined(separator: "\n"))
         }
         // LegalKnowledge citations as prompt context
         // 尽力而为：法条库缺失/加载失败时跳过引用增强，不影响本地分析。
@@ -267,40 +291,35 @@ final class CourtViewModel {
     func applyVerdicts(_ result: CaseResult) {
         var gapKeys = Set(caseFile.gaps.map { $0.description + $0.relatedClaim })
         for v in result.verdicts {
-            // Skip template reasoning from RuleBasedLLM (regex noise)
+            // Template reasoning from RuleBasedLLM: skip for gap creation
+            // (regex engine cannot distinguish evidence present from missing),
+            // but still write to FieldState and mark stale so catalog content
+            // and consistency checks are not silently discarded.
             let isTemplate = v.reasoning.contains("Rule-based detection")
-            // Only write to FieldState if verdict has real reasoning
-            if !v.reasoning.isEmpty && !isTemplate {
-                // Draft step named "draft_item_N": extract N, map to evidence item N-1
+            // Write to FieldState if verdict has reasoning
+            if !v.reasoning.isEmpty {
                 if let itemNum = parseItemNumber(from: v.finding), itemNum > 0, itemNum <= caseFile.evidenceItems.count {
                     let item = caseFile.evidenceItems[itemNum - 1]
-                    // 传入当前证据版本，FieldState 据此记录 basedOnEvidenceVersion
                     _ = item.proofContentState.merge(newMachineValue: v.reasoning, directlyAffected: false,
                                                      evidenceVersion: caseFile.evidenceVersion)
                 }
             }
-            // Mark items stale only for real (non-template) findings
-            if !isTemplate {
-                for f in v.findings where !f.isEmpty {
-                    // Map finding location to item number if possible
-                    if let itemNum = parseItemNumber(from: f.location), itemNum > 0, itemNum <= caseFile.evidenceItems.count {
-                        caseFile.evidenceItems[itemNum - 1].proofContentState.stale = true
-                    }
+            // Mark items stale for real findings
+            for f in v.findings where !f.isEmpty {
+                if let itemNum = parseItemNumber(from: f.location), itemNum > 0, itemNum <= caseFile.evidenceItems.count {
+                    caseFile.evidenceItems[itemNum - 1].proofContentState.stale = true
                 }
             }
-            // Deduplicate gaps — same detail+location never appended twice.
-            // Template reasoning must never create gaps: the regex engine cannot
-            // distinguish "evidence is present" from "evidence is missing", so
-            // its findings are noise that would produce 假缺口 false positives.
-            if !isTemplate {
-                for f in v.findings where !f.isEmpty {
-                    let key = f.detail + f.location
-                    if gapKeys.insert(key).inserted {
-                        caseFile.gaps.append(GapItem(severity: f.kind == "gap" ? .high : .medium,
-                                                     description: f.detail,
-                                                     suggestedRemedy: v.reasoning,
-                                                     relatedClaim: f.location))
-                    }
+            // Gap creation: skip template reasoning to prevent false gaps
+            // (regex engine cannot distinguish evidence present from missing)
+            if isTemplate { continue }
+            for f in v.findings where !f.isEmpty {
+                let key = f.detail + f.location
+                if gapKeys.insert(key).inserted {
+                    caseFile.gaps.append(GapItem(severity: f.kind == "gap" ? .high : .medium,
+                                                 description: f.detail,
+                                                 suggestedRemedy: v.reasoning,
+                                                 relatedClaim: f.location))
                 }
             }
         }
@@ -321,21 +340,50 @@ final class CourtViewModel {
 
     // MARK: - 引用验证
 
-    /// 逐字核对：目录证明内容中的每个数字必须能在 OCR 原文中找到，否则标记待更新。
+    /// 逐字核对：目录证明内容中的数字必须能在 OCR 原文中找到，否则标记待更新。
+    /// 无 OCR 原文的证据项标记为"无法核实"而非静默通过。
     func verifySnippets() {
+        var stats = (verified: 0, stale: 0, noSource: 0)
         var validator = EvidenceValidator()
         for item in caseFile.evidenceItems where !item.sourceOCRText.isEmpty {
             validator.addSource("evidence_\(item.number)", item.sourceOCRText)
         }
         for item in caseFile.evidenceItems {
-            guard !item.sourceOCRText.isEmpty else { continue }
-            let numbers = (item.proofContentState.displayValue ?? "").numbers
+            guard !item.sourceOCRText.isEmpty else {
+                item.proofContentState.stale = true
+                stats.noSource += 1
+                continue
+            }
+            let displayText = item.proofContentState.displayValue ?? ""
+            guard !displayText.isEmpty else { continue }
+
+            // Check numbers in proof content against OCR source
+            let numbers = displayText.numbers
             var allMatch = true
             for num in numbers {
                 if !item.sourceOCRText.contains(num) { allMatch = false; break }
             }
-            if !allMatch { item.proofContentState.stale = true }
+            // Also verify significant text spans (non-numeric content ≥ 4 chars)
+            if allMatch {
+                let spans = displayText.components(separatedBy: .whitespacesAndNewlines)
+                    .filter { $0.count >= 4 && Double($0) == nil }
+                for span in spans.prefix(3) {
+                    if !item.sourceOCRText.contains(span) { allMatch = false; break }
+                }
+            }
+            if !allMatch {
+                item.proofContentState.stale = true
+                stats.stale += 1
+            } else {
+                stats.verified += 1
+            }
         }
+        let parts: [String] = [
+            stats.verified > 0 ? "\(stats.verified) 项通过" : nil,
+            stats.stale > 0 ? "\(stats.stale) 项待更新" : nil,
+            stats.noSource > 0 ? "\(stats.noSource) 项无原文" : nil,
+        ].compactMap { $0 }
+        statusMessage = parts.isEmpty ? "引用验证完成" : "引用验证：\(parts.joined(separator: "，"))"
     }
 
     // MARK: - 导出

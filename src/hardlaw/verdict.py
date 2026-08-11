@@ -120,8 +120,7 @@ class Verdict:
             "finding": self.finding,
             "refuted": self.refuted,
             "confidence": self.confidence.value,
-            "blocking": self.blocking,
-            "blocking_kind": self.blocking_kind,
+            "blocking": self.blocking_kind,
             "evidence_refs": [
                 r.to_dict() if hasattr(r, "to_dict") else r
                 for r in self.evidence_refs

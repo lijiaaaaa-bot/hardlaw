@@ -135,7 +135,7 @@ public enum ExcelExport {
                 let columns = (0..<columnCount).map { column -> AnyColumn in
                     Column<String>(
                         name: "c\(column)",
-                        contents: rows.map { $0.indices.contains(column) ? $0[column] : "" }
+                        contents: rows.map { sanitizeCell($0.indices.contains(column) ? $0[column] : "") }
                     ).eraseToAnyColumn()
                 }
                 let frame = DataFrame(columns: columns)
@@ -151,6 +151,17 @@ public enum ExcelExport {
     }
 
     // MARK: - Helpers
+
+    /// Sanitize a cell value to prevent CSV formula injection.
+    /// Prefixes cells starting with `=`, `+`, `-`, or `@` with a single quote
+    /// so Excel/WPS treat them as literal text rather than executing formulas.
+    private static func sanitizeCell(_ value: String) -> String {
+        guard let first = value.first else { return value }
+        if first == "=" || first == "+" || first == "-" || first == "@" {
+            return "'\(value)"
+        }
+        return value
+    }
 
     private static func verificationLabel(_ item: EvidenceItem) -> String {
         if item.humanReviewed { return "人工已确认" }

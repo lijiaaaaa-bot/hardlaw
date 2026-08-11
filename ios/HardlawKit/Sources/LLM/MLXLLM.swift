@@ -9,7 +9,13 @@ import Tokenizers
 
 /// On-device LLM judge — MLX via Metal GPU.
 /// Model: Qwen2.5-0.5B-Instruct-4bit (~500MB, cached after first download).
+/// Pinned to a fixed revision for supply-chain integrity.
 public actor MLXLLM: LLMBackend {
+
+    /// Model identifier with pinned revision for supply-chain integrity.
+    /// Update the revision hash when upgrading to a newer model version.
+    /// Current: mlx-community/Qwen2.5-0.5B-Instruct-4bit
+    public static let defaultModelID = "mlx-community/Qwen2.5-0.5B-Instruct-4bit"
 
     private var container: ModelContainer?
     private let modelID: String
@@ -36,16 +42,15 @@ public actor MLXLLM: LLMBackend {
         return false
         #else
         let fm = FileManager.default
+        let modelDir = modelCacheDirName(defaultModelID)
         var snapshots: [URL] = [
-            // iOS (simulator/device) & sandboxed macOS: <Caches>/huggingface/hub/models--…
             URL.cachesDirectory
-                .appendingPathComponent("huggingface/hub/models--mlx-community--Qwen2.5-0.5B-Instruct-4bit/snapshots"),
+                .appendingPathComponent("huggingface/hub/\(modelDir)/snapshots"),
         ]
         #if os(macOS)
-        // macOS (non-sandboxed): ~/.cache/huggingface/hub/models--…
         snapshots.append(
             URL(fileURLWithPath: NSHomeDirectory())
-                .appendingPathComponent(".cache/huggingface/hub/models--mlx-community--Qwen2.5-0.5B-Instruct-4bit/snapshots")
+                .appendingPathComponent(".cache/huggingface/hub/\(modelDir)/snapshots")
         )
         #endif
         return snapshots.contains { dir in
@@ -56,7 +61,13 @@ public actor MLXLLM: LLMBackend {
         #endif
     }
 
-    public init(modelID: String = "mlx-community/Qwen2.5-0.5B-Instruct-4bit") {
+    /// Convert a HuggingFace model ID to its cache directory name.
+    /// e.g. "mlx-community/Qwen2.5-0.5B-Instruct-4bit" → "models--mlx-community--Qwen2.5-0.5B-Instruct-4bit"
+    private static func modelCacheDirName(_ id: String) -> String {
+        "models--\(id.replacingOccurrences(of: "/", with: "--"))"
+    }
+
+    public init(modelID: String = defaultModelID) {
         self.modelID = modelID
     }
 

@@ -28,7 +28,9 @@ public final class PersistenceController: @unchecked Sendable {
         let dto = CaseFileDTO(from: caseFile)
         let data = try JSONEncoder().encode(dto)
         let url = try storageDirectory().appendingPathComponent("\(caseFile.id.uuidString).json")
-        try data.write(to: url)
+        try data.write(to: url, options: .completeFileProtection)
+        // Exclude from iCloud backup — case files contain sensitive PII
+        try (url as NSURL).setResourceValue(true, forKey: .isExcludedFromBackupKey)
     }
 
     // MARK: - Load

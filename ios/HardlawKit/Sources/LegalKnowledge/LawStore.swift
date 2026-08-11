@@ -9,36 +9,67 @@ import NaturalLanguage
 /// runtime — the Python `export_for_ios.py` script handles parsing and exports
 /// structured JSON that the app reads directly.
 ///
+/// ## Thread Safety
+///
+/// All stored properties are immutable after construction, making LawStore
+/// trivially `Sendable` without locks or `@unchecked`.
+///
 /// ## Keyword Search
 ///
 /// Uses Apple's `NLTokenizer` for Chinese word segmentation (no third-party
 /// dependencies), combined with pre-computed IDF weights from `laws_vocab.json`.
 /// This mirrors the Python jieba+IDF approach.
-public final class LawStore: @unchecked Sendable {
-    public init() {}
+public final class LawStore: Sendable {
+    /// Empty store for graceful degradation when bundle resources are missing.
+    public init() {
+        self.chunks = []
+        self.vocabulary = [:]
+        self.docCount = 0
+        self.chunksByLaw = [:]
+        self.chunkTokens = []
+    }
+
+    /// Load all law data from a bundle. Throws if resources are not found.
+    /// Tests should use `Bundle(for: type)` or `Bundle.module`.
+    public init(bundle: Bundle) throws {
+        let resourceURL: URL
+        if let subdir = bundle.url(forResource: "LegalKnowledge", withExtension: nil) {
+            resourceURL = subdir
+        } else if bundle.url(forResource: "laws_chunks", withExtension: "json") != nil {
+            resourceURL = bundle.bundleURL
+        } else {
+            throw LawStoreError.resourceNotFound("LegalKnowledge/ directory not found in bundle")
+        }
+        let (c, v, d, cbl, ct) = try Self.loadData(from: resourceURL)
+        self.chunks = c
+        self.vocabulary = v
+        self.docCount = d
+        self.chunksByLaw = cbl
+        self.chunkTokens = ct
+    }
 
     /// Shared store: loads the app bundle's `LegalKnowledge/` once on first
-    /// access and caches it. Avoids re-reading the ~7MB laws JSON on every
-    /// command. Load failures are non-fatal — `chunkCount == 0` and callers
-    /// skip legal-citation enrichment (尽力而为).
-    public static let shared: LawStore = {
-        let store = LawStore()
-        try? store.load(from: .main)
-        return store
-    }()
-    // MARK: - Properties
+    /// access and caches it. Load failures are non-fatal — `chunkCount == 0`
+    /// and callers skip legal-citation enrichment (尽力而为).
+    public static let shared: LawStore = (try? LawStore(bundle: .main)) ?? LawStore()
+
+    // MARK: - Properties (immutable after init)
 
     /// All searchable chunks loaded from the bundle.
-    public private(set) var chunks: [LawChunk] = []
+    public let chunks: [LawChunk]
 
     /// Pre-computed IDF vocabulary: token → (document_frequency, idf_weight).
-    private var vocabulary: [String: VocabEntry] = [:]
+    private let vocabulary: [String: VocabEntry]
 
     /// Total document count (used for IDF normalization).
-    private var docCount: Int = 0
+    private let docCount: Int
 
     /// Chunks grouped by law ID for article-level lookup.
-    private var chunksByLaw: [String: [LawChunk]] = [:]
+    private let chunksByLaw: [String: [LawChunk]]
+
+    /// Pre-computed token arrays per chunk — avoids re-tokenizing 11K chunks
+    /// on every keyword search (~100ms → <1ms). Memory cost ~1-2MB.
+    private let chunkTokens: [[String]]
 
     // MARK: - Types
 
@@ -47,43 +78,30 @@ public final class LawStore: @unchecked Sendable {
         let idf: Double
     }
 
-    // MARK: - Loading
+    // MARK: - Loading (static helper)
 
-    /// Load all law data from the app bundle.
-    ///
-    /// - Parameter bundle: The bundle containing `LegalKnowledge/` resources.
-    ///   Defaults to `.main`; tests should use `Bundle(for: type)` or
-    ///   `Bundle.module`.
-    public func load(from bundle: Bundle = .main) throws {
-        let resourceURL: URL
-        // Try subdirectory first, then root (XcodeGen flattens folder references)
-        if let subdir = bundle.url(forResource: "LegalKnowledge", withExtension: nil) {
-            resourceURL = subdir
-        } else if bundle.url(forResource: "laws_chunks", withExtension: "json") != nil {
-            resourceURL = bundle.bundleURL
-        } else {
-            throw LawStoreError.resourceNotFound("LegalKnowledge/ directory not found in bundle")
-        }
-        try loadChunks(from: resourceURL)
-        try loadVocabulary(from: resourceURL)
+    private static func loadData(from resourceURL: URL) throws -> ([LawChunk], [String: VocabEntry], Int, [String: [LawChunk]], [[String]]) {
+        let chunks = try Self.loadChunks(from: resourceURL)
+        let vocabulary = try Self.loadVocabulary(from: resourceURL)
+        let docCount = chunks.count
+        let chunksByLaw = Dictionary(grouping: chunks, by: \.lawID)
+        // Pre-compute token arrays to avoid re-tokenizing on every search
+        let chunkTokens = chunks.map { Self.tokenizeStatic($0.text) }
+        return (chunks, vocabulary, docCount, chunksByLaw, chunkTokens)
     }
 
-    private func loadChunks(from resourceURL: URL) throws {
+    private static func loadChunks(from resourceURL: URL) throws -> [LawChunk] {
         let chunksURL = resourceURL.appendingPathComponent("laws_chunks.json")
         let data = try Data(contentsOf: chunksURL)
         let decoder = JSONDecoder()
-        chunks = try decoder.decode([LawChunk].self, from: data)
-
-        // Build law-level index
-        chunksByLaw = Dictionary(grouping: chunks, by: \.lawID)
-        docCount = chunks.count
+        return try decoder.decode([LawChunk].self, from: data)
     }
 
-    private func loadVocabulary(from resourceURL: URL) throws {
+    private static func loadVocabulary(from resourceURL: URL) throws -> [String: VocabEntry] {
         let vocabURL = resourceURL.appendingPathComponent("laws_vocab.json")
         let data = try Data(contentsOf: vocabURL)
         let decoder = JSONDecoder()
-        vocabulary = try decoder.decode([String: VocabEntry].self, from: data)
+        return try decoder.decode([String: VocabEntry].self, from: data)
     }
 
     // MARK: - Public API
@@ -130,22 +148,23 @@ public final class LawStore: @unchecked Sendable {
             }
         }
 
-        // Score every chunk
+        // Score every chunk using pre-computed token cache
         var scored: [(chunk: LawChunk, score: Double)] = []
         scored.reserveCapacity(chunks.count)
 
-        for chunk in chunks {
-            let chunkTokens = tokenize(chunk.text)
+        for i in 0..<chunks.count {
+            let chunk = chunks[i]
+            let ct = chunkTokens[i]
             var score: Double = 0
             for token in tokens {
                 if let weight = queryWeights[token] {
-                    let tf = min(Double(chunkTokens.filter({ $0 == token }).count), 3.0)
+                    let tf = min(Double(ct.filter({ $0 == token }).count), 3.0)
                     score += weight * tf
                 }
             }
             if score > 0 {
                 // Normalize by document length to avoid long-doc bias
-                var norm = score / (1.0 + sqrt(Double(chunkTokens.count)))
+                var norm = score / (1.0 + sqrt(Double(ct.count)))
                 // Category boost — down-weight guides and cases
                 norm = applyCategoryBoost(chunk: chunk, score: norm)
                 scored.append((chunk, norm))
@@ -165,6 +184,11 @@ public final class LawStore: @unchecked Sendable {
     /// Filters single-character tokens and common stop words to
     /// improve search relevance.
     func tokenize(_ text: String) -> [String] {
+        return Self.tokenizeStatic(text)
+    }
+
+    /// Static entry point for tokenization used during init (before self is available).
+    static func tokenizeStatic(_ text: String) -> [String] {
         guard !text.isEmpty else { return [] }
 
         let tokenizer = NLTokenizer(unit: .word)

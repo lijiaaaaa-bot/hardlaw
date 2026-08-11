@@ -26,6 +26,7 @@ from hardlaw.verdict import (
     Finding,
     VerdictParser,
     compute_fingerprint,
+    BLOCKING_CONTRADICTION,
 )
 
 logger = logging.getLogger(__name__)
@@ -235,7 +236,17 @@ class Court:
                 reasoning="No LLM backend configured",
             )
 
-        raw = await self.llm.judge(prompt)
+        try:
+            raw = await self.llm.judge(prompt)
+        except Exception as e:
+            logger.error(f"LLM judge failed: {e}")
+            return Verdict(
+                finding="llm_error",
+                refuted=True,
+                blocking=True,
+                blocking_kind=BLOCKING_CONTRADICTION,
+                fallback_note=f"LLM call failed: {e}",
+            )
 
         # Parse verdict (never raises)
         verdict = VerdictParser.parse(raw)
@@ -266,9 +277,10 @@ class Court:
             )
             if not all_valid:
                 logger.warning(f"Evidence validation failures: {failures}")
-                # Force reject on unverifiable evidence
-                if statute_list and any(s.default_to_reject for s in statute_list):
-                    verdict.refuted = True
+                # Force reject on unverifiable evidence — fail-closed invariant.
+                # An LLM citing evidence that doesn't exist in the source material
+                # is a hallucination and must never result in a passing verdict.
+                verdict.refuted = True
 
         return verdict
 

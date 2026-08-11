@@ -92,7 +92,7 @@ class TestCourtBasic:
             statutes=[simple_statute],
             procedure=simple_procedure,
             llm=MockLLM(responses=[
-                '{"finding": "violation", "refuted": true, "confidence": "high", "blocking": true, "blocking_kind": "contradiction", "evidence_refs": [{"source": "content", "location": "p1", "snippet": "bad", "kind": "text"}], "findings": [{"kind": "gap", "location": "content:p1", "detail": "Critical"}], "reasoning": "Blocking violation."}',
+                '{"finding": "violation", "refuted": true, "confidence": "high", "blocking": "contradiction", "evidence_refs": [{"source": "content", "location": "p1", "snippet": "bad", "kind": "text"}], "findings": [{"kind": "gap", "location": "content:p1", "detail": "Critical"}], "reasoning": "Blocking violation."}',
             ]),
         )
         result = await court.hear({"content": "bad content"})

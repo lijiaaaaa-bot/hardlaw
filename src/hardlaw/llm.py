@@ -92,3 +92,33 @@ class Ollama:
         )
         stdout, _ = await proc.communicate()
         return stdout.decode("utf-8", errors="replace").strip()
+
+class MLX:
+    """MLX backend — process-internal, no server, 2-3x faster than Ollama.
+
+    Usage:
+        judge = MLX(model="mlx-community/Qwen3.5-35B-A3B-4bit")
+        result = await judge.judge("some prompt")
+    """
+
+    def __init__(self, model: str = "mlx-community/Qwen3.5-35B-A3B-4bit"):
+        self.model = model
+        self._loaded = False
+        self._model = None
+        self._tokenizer = None
+
+    def _ensure_loaded(self):
+        if not self._loaded:
+            from mlx_lm import load as _load
+            self._model, self._tokenizer = _load(self.model)
+            self._loaded = True
+
+    async def judge(self, prompt: str) -> str:
+        import asyncio
+        from mlx_lm import generate
+        self._ensure_loaded()
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, lambda: generate(
+                self._model, self._tokenizer,
+                prompt=prompt, max_tokens=2048, temp=0.1))

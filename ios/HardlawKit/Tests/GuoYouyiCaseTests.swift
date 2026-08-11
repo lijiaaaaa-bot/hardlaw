@@ -85,8 +85,10 @@ final class GuoYouyiCaseTests: XCTestCase {
             steps: [
                 Step(name: "calculate", kind: .code,
                      handler: { ctx in
+                         // 郭又义案：参保 2020-07-01 至解除 2026-05-08 = 5年10个月
+                         // 依《劳动合同法》第47条：六个月以上不满一年按一年 → 6个月
                          let monthly = 7550
-                         let years = 5
+                         let years = 6
                          ctx.metadata["result"] = JSONValue.number(Double(monthly * years))
                          ctx.metadata["formula"] = JSONValue.string("\(monthly) × \(years)")
                      },
@@ -100,6 +102,8 @@ final class GuoYouyiCaseTests: XCTestCase {
         ])
         XCTAssertEqual(result.finalDisposition, .terminalStep)
         XCTAssertEqual(result.roundCount, 1)
+        // NOTE: 金额验证见 SeveranceCalculationTests（经济补偿金计算测试）
+        // 本测试验证 CODE 步正常执行，非金额计算正确性
     }
 
     // MARK: - 证据验证测试（纯确定性）

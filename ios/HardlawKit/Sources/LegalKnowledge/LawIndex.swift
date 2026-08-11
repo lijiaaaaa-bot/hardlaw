@@ -14,8 +14,8 @@ import Foundation
 ///   unavailable, falls back to keyword-only search.
 /// - **RRF merge**: Reciprocal Rank Fusion combining keyword and semantic
 ///   result lists. Keyword results are weighted more heavily (k=10) than
-///   semantic results (k=60) because the current multilingual embedding
-///   model has mediocre Chinese performance.
+///   semantic results (k=60) because keyword retrieval is highly
+///   effective for Chinese legal terminology.
 ///
 /// ## Performance
 ///
@@ -37,7 +37,7 @@ public final class LawIndex: @unchecked Sendable {
     /// Number of vectors loaded.
     private var nVectors: Int = 0
 
-    /// Vector dimension (384 for MiniLM).
+    /// Vector dimension (512 for BGE-small-zh-v1.5).
     private var vectorDim: Int = 0
 
     /// Optional query embedding provider.

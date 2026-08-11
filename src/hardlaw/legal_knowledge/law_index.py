@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 # ── Embedding Model (singleton, lazy-loaded) ────────────────────────────
 
-_MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
+_MODEL_NAME = "BAAI/bge-small-zh-v1.5"
 _MODEL: Any = None
 _MODEL_LOCK = threading.Lock()
 
@@ -87,9 +87,9 @@ def _prewarm_model() -> None:
 
 
 def _embed(texts: list[str]) -> np.ndarray:
-    """Encode a batch of texts into normalized 384-dim vectors."""
+    """Encode a batch of texts into normalized 512-dim vectors."""
     if not texts:
-        return np.empty((0, 384), dtype=np.float32)
+        return np.empty((0, 512), dtype=np.float32)
     model = _get_model()
     embeddings: np.ndarray = model.encode(
         texts,

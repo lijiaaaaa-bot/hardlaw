@@ -385,20 +385,35 @@ public struct IntentHandler {
 
     // MARK: - Deterministic checks
 
-    private static func findCommonGaps(_ caseFile: CaseFile) -> [GapItem] {
+    /// Fallback 确定性缺口检测 — LLM 缺席时的保底产出。
+    /// 检查证据名称，名称不匹配时回退搜索 OCR 内容。
+    static func findCommonGaps(_ caseFile: CaseFile) -> [GapItem] {
         var gaps: [GapItem] = []
+        var seen = Set<String>()
         let names = Set(caseFile.evidenceItems.map { $0.name })
-        let checks: [(String, String, String)] = [
-            ("劳动合同", "证明劳动关系和工资标准", "全部请求"),
-            ("银行流水", "证明实际工资发放", "欠薪相关请求"),
-            ("参保证明", "证明劳动关系存续期间", "全部请求"),
+        let allOCR = caseFile.evidenceItems.map { $0.sourceOCRText }.joined(separator: " ")
+
+        // Map claims to related evidence types
+        let hasWageClaim = caseFile.claims.contains { $0.content.contains("工资") || $0.content.contains("报酬") || $0.content.contains("欠薪") }
+        let primaryClaim = hasWageClaim ? "欠薪相关请求" : "全部请求"
+
+        let checks: [(keyword: String, type: String, purpose: String, claim: String)] = [
+            ("劳动合同", "劳动合同", "证明劳动关系和工资标准", primaryClaim),
+            ("银行流水|工资流水", "银行流水/工资流水", "证明实际工资发放金额", primaryClaim),
+            ("参保证明|社保", "参保证明/社保记录", "证明劳动关系存续期间", "全部请求"),
+            ("解除通知|被迫解除|EMS", "被迫解除通知书及送达凭证", "证明解除程序的合法性", "被迫解除相关请求"),
         ]
-        for (type, purpose, claim) in checks {
-            if !names.contains(where: { $0.contains(type) }) {
-                gaps.append(GapItem(severity: .high,
-                    description: "缺少\(type)",
-                    suggestedRemedy: "建议补充\(type)（\(purpose)）",
-                    relatedClaim: claim))
+        for (keyword, type, purpose, claim) in checks {
+            let nameMatch = names.contains { $0.contains(type) || $0.range(of: keyword, options: .regularExpression) != nil }
+            let contentMatch = allOCR.range(of: keyword, options: .regularExpression) != nil
+            if !nameMatch && !contentMatch {
+                let key = "\(type)|\(claim)"
+                if seen.insert(key).inserted {
+                    gaps.append(GapItem(severity: .high,
+                        description: "缺少\(type)",
+                        suggestedRemedy: "建议补充\(type)（\(purpose)）",
+                        relatedClaim: claim))
+                }
             }
         }
         return gaps
