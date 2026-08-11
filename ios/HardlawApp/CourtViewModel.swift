@@ -17,6 +17,9 @@ final class CourtViewModel {
     var statusMessage: String?
     var isProcessing = false
     var goalProgress = ""
+    /// LLM 后端 — 默认 MLX on-device（Metal GPU）。
+    /// 集成测试可注入 MockLLM / RuleBasedLLM，保证离线环境端到端可跑。
+    var llm: any LLMBackend = MLXLLM()
 
     init(caseFile: CaseFile) {
         self.caseFile = caseFile
@@ -228,8 +231,7 @@ final class CourtViewModel {
             let cites = results.map { "\($0.chunk.lawID)第\($0.chunk.articleNum)条" }
             caseData["legal_citations"] = .string(cites.joined(separator: "; "))
         }
-        // MLX on-device LLM — iPhone GPU via Metal
-        let llm: any LLMBackend = MLXLLM()
+        // LLM 后端 — 默认 MLX on-device；测试注入 MockLLM/RuleBasedLLM 保证离线可跑
         let court = Court(statutes: statutes, procedure: procedure, llm: llm)
         return await court.hear(caseData: caseData)
     }
