@@ -121,4 +121,4 @@ class MLX:
         return await loop.run_in_executor(
             None, lambda: generate(
                 self._model, self._tokenizer,
-                prompt=prompt, max_tokens=2048, temp=0.1))
+                prompt=prompt, max_tokens=2048))
