@@ -1,36 +1,36 @@
 import SwiftUI
-import CoreGraphics
-import ImageIO
-import PDFKit
 import HardlawKit
 
 // MARK: - 案件看板（单一滚动视图，替代 TabView）
+// 业务编排见 CourtViewModel.swift；分区与编辑器视图见 CaseSectionsView.swift；
+// 审查目标进度条见 GoalProgressView.swift。
 
 struct CaseWorkbenchView: View {
     @Bindable var caseFile: CaseFile
-    @Environment(\.dismiss) private var dismiss
+    @State private var viewModel: CourtViewModel
     @State private var showEvidenceEditor = false
     @State private var editingItem: EvidenceItem?
     @State private var commandText = ""
-    @State private var isProcessing = false
     @State private var expandedNeedsYou = false
-    @State private var statusMessage: String?
     @State private var showFileImporter = false
     @State private var shareURL: URL?
     @State private var showShareSheet = false
-    @State private var goal: Goal?
-    @State private var goalProgress: String = ""
+
+    init(caseFile: CaseFile) {
+        self.caseFile = caseFile
+        _viewModel = State(initialValue: CourtViewModel(caseFile: caseFile))
+    }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
                 CaseHeader(caseFile: caseFile)
 
-                if let statusMessage {
-                    StatusBanner(text: statusMessage) { self.statusMessage = nil }
+                if let statusMessage = viewModel.statusMessage {
+                    StatusBanner(text: statusMessage) { viewModel.statusMessage = nil }
                 }
 
-                if let goal {
+                if let goal = viewModel.goal {
                     GoalProgressView(goal: goal)
                 }
 
@@ -72,45 +72,16 @@ struct CaseWorkbenchView: View {
             }
         }
         .safeAreaInset(edge: .bottom) {
-            CommandBar(text: $commandText, isProcessing: $isProcessing,
+            CommandBar(text: $commandText, isProcessing: $viewModel.isProcessing,
                        placeholder: nextAction, onSubmit: handleCommand,
                        onImport: { showFileImporter = true })
         }
         .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.pdf, .image, .plainText],
                       allowsMultipleSelection: true) { result in
-            if case .success(let urls) = result {
-                var importedItems: [EvidenceItem] = []
-                for url in urls {
-                    let item = EvidenceItem(number: caseFile.evidenceItems.count + 1,
-                                            name: url.lastPathComponent)
-                    caseFile.evidenceItems.append(item)
-                    importedItems.append(item)
-                }
-                statusMessage = "已导入 \(urls.count) 个文件，正在OCR识别…"
-                isProcessing = true
-                Task {
-                    var failed = 0
-                    for (url, item) in zip(urls, importedItems) {
-                        let ocrText = await Self.recognizeText(from: url)
-                        item.sourceOCRText = ocrText
-                        if ocrText.isEmpty { failed += 1 }
-                    }
-                    statusMessage = failed == 0
-                        ? "已完成 \(urls.count) 个文件的识别"
-                        : "\(urls.count - failed) 个文件识别成功，\(failed) 个未识别"
-                    do {
-                        try PersistenceController.shared.save(caseFile)
-                    } catch {
-                        statusMessage = "保存失败：\(error.localizedDescription)"
-                    }
-                    isProcessing = false
-                }
-            }
+            if case .success(let urls) = result { viewModel.importFiles(urls) }
         }
         .sheet(isPresented: $showEvidenceEditor) {
-            if let item = editingItem {
-                EvidenceEditorView(item: item)
-            }
+            if let item = editingItem { EvidenceEditorView(item: item) }
         }
         .sheet(isPresented: $showShareSheet) {
             if let url = shareURL {
@@ -121,7 +92,7 @@ struct CaseWorkbenchView: View {
                 .presentationDetents([.medium])
             }
         }
-        .onAppear { verifySnippets() }
+        .onAppear { viewModel.verifySnippets() }
     }
 
     // MARK: - Derived state
@@ -151,331 +122,25 @@ struct CaseWorkbenchView: View {
 
     // MARK: - Actions
 
+    func handleCommand(_ text: String) { viewModel.handleCommand(text) }
+    func handleNeedsYouTap(_ item: NeedsYouItem) { item.action() }
+
     func addNewEvidence() {
         let item = EvidenceItem(number: caseFile.evidenceItems.count + 1)
         caseFile.evidenceItems.append(item)
+        caseFile.evidenceVersion += 1 // 新证据入卷 — 版本递增
         editingItem = item
         showEvidenceEditor = true
     }
 
-    func handleNeedsYouTap(_ item: NeedsYouItem) { item.action() }
-
-    func handleCommand(_ text: String) {
-        let intent = IntentParser.parse(text, stage: caseFile.stage)
-        guard intent.isParsed else {
-            statusMessage = "试试：补充银行流水 / 生成目录 / 检查工资 / 全面复核"
-            return
-        }
-        isProcessing = true
-        Task {
-            if intent.kind == .fullReview || text.contains("审查") {
-                runGoal(makeReviewGoal())
-                return
-            }
-            if let result = await executeIntent(intent) {
-                applyVerdicts(result)
-                statusMessage = summary(from: result)
-            }
-            do {
-                try PersistenceController.shared.save(caseFile)
-            } catch {
-                statusMessage = "保存失败：\(error.localizedDescription)"
-            }
-            isProcessing = false
-        }
-    }
-
     /// 导出证据目录 CSV；失败时给出用户可见反馈。
     func exportCatalog() {
-        if let url = ExcelExport.exportCatalog(caseFile) {
+        if let url = viewModel.exportCatalogURL() {
             shareURL = url
             showShareSheet = true
         } else {
-            statusMessage = "导出失败：无法生成目录文件，请重试"
+            viewModel.statusMessage = "导出失败：无法生成目录文件，请重试"
         }
-    }
-
-    /// Execute a goal's steps sequentially with visible progress (Plan → Execute → Verify).
-    func runGoal(_ goal: Goal) {
-        var g = goal
-        g.status = .running
-        self.goal = g
-        isProcessing = true
-        Task {
-            for i in g.steps.indices {
-                g.steps[i].status = .running
-                self.goal = g
-                goalProgress = "步骤 \(i+1)/\(g.steps.count): \(g.steps[i].name)"
-                let result = await executeGoalStep(g.steps[i])
-                g.steps[i].status = result != nil ? .done : .failed
-                g.steps[i].resultSummary = result.flatMap { summary(from: $0) } ?? ""
-                if let r = result { applyVerdicts(r) }
-                self.goal = g
-            }
-            g.status = g.isComplete ? .done : .failed
-            self.goal = g
-            statusMessage = g.isComplete ? "审查完成" : "部分步骤需要人工处理"
-            do {
-                try PersistenceController.shared.save(caseFile)
-            } catch {
-                statusMessage = "保存失败：\(error.localizedDescription)"
-            }
-            isProcessing = false
-        }
-    }
-
-    func makeReviewGoal() -> Goal {
-        var steps: [GoalStep] = [
-            GoalStep(name: "验证引用出处", detail: "逐字核对原文", kind: .verifyCitations),
-            GoalStep(name: "检测证据缺口", detail: "劳动关系、工资、混同", kind: .detectGaps),
-        ]
-        if caseFile.evidenceItems.contains(where: { ($0.proofContentState.displayValue?.isEmpty ?? true) }) {
-            steps.insert(GoalStep(name: "生成证据目录", detail: "\(caseFile.evidenceItems.count) 项", kind: .generateCatalog), at: 0)
-        }
-        if caseFile.evidenceItems.filter({ $0.name.contains("工资") || ($0.proofContentState.displayValue ?? "").contains("元") }).count >= 2 {
-            steps.append(GoalStep(name: "工资一致性检查", detail: "交叉比对", kind: .checkConsistency))
-        }
-        return Goal(description: "审查 \(caseFile.caseName)", steps: steps)
-    }
-
-    func executeGoalStep(_ step: GoalStep) async -> CaseResult? {
-        switch step.kind {
-        case .generateCatalog:
-            guard caseFile.evidenceItems.count > 0 else { return nil }
-            do {
-                let proc = try CourtProcedures.catalogGeneration(itemCount: caseFile.evidenceItems.count)
-                return await runCourt(proc, statutes: StatuteBook())
-            } catch {
-                statusMessage = "目录生成失败：\(error.localizedDescription)"
-                return nil
-            }
-        case .verifyCitations:
-            verifySnippets()
-            return nil
-        case .detectGaps:
-            do {
-                let proc = try CourtProcedures.gapDetection()
-                return await runCourt(proc, statutes: LaborLawStatutes.gapDetectionBook)
-            } catch {
-                statusMessage = "缺口检测失败：\(error.localizedDescription)"
-                return nil
-            }
-        case .checkConsistency:
-            do {
-                let proc = try CourtProcedures.salaryConsistency()
-                return await runCourt(proc, statutes: StatuteBook())
-            } catch {
-                statusMessage = "工资检查失败：\(error.localizedDescription)"
-                return nil
-            }
-        }
-    }
-
-    func executeIntent(_ intent: ParsedIntent) async -> CaseResult? {
-        switch intent.kind {
-        case .generateCatalog:
-            let count = caseFile.evidenceItems.count
-            guard count > 0 else {
-                statusMessage = "尚无证据，无法生成目录"
-                return nil
-            }
-            do {
-                let proc = try CourtProcedures.catalogGeneration(itemCount: count)
-                statusMessage = "生成 \(count) 项目录…"
-                return await runCourt(proc, statutes: StatuteBook())
-            } catch {
-                statusMessage = "目录生成失败：\(error.localizedDescription)"
-                return nil
-            }
-        case .fullReview:
-            let count = caseFile.evidenceItems.count
-            guard count > 0 else {
-                statusMessage = "尚无证据，无法全面复核"
-                return nil
-            }
-            do {
-                let proc = try CourtProcedures.fullReview(itemCount: count)
-                statusMessage = "全面复核中…"
-                return await runCourt(proc, statutes: StatuteBook())
-            } catch {
-                statusMessage = "全面复核失败：\(error.localizedDescription)"
-                return nil
-            }
-        case .detectGaps:
-            do {
-                let proc = try CourtProcedures.gapDetection()
-                statusMessage = "检测证据缺口…"
-                return await runCourt(proc, statutes: LaborLawStatutes.gapDetectionBook)
-            } catch {
-                statusMessage = "缺口检测失败：\(error.localizedDescription)"
-                return nil
-            }
-        case .checkConsistency:
-            do {
-                let proc = try CourtProcedures.salaryConsistency()
-                statusMessage = "工资一致性检查…"
-                return await runCourt(proc, statutes: StatuteBook())
-            } catch {
-                statusMessage = "工资检查失败：\(error.localizedDescription)"
-                return nil
-            }
-        case .verifyCitations:
-            verifySnippets()
-            statusMessage = "引用验证完成"
-            return nil
-        default:
-            let r = IntentHandler.handle(intent, caseFile: caseFile)
-            statusMessage = r.message
-            return nil
-        }
-    }
-
-    func runCourt(_ procedure: Procedure, statutes: StatuteBook) async -> CaseResult {
-        var caseData: [String: JSONValue] = [:]
-        for item in caseFile.evidenceItems {
-            if !item.sourceOCRText.isEmpty {
-                caseData["evidence_\(item.number)"] = .string(item.sourceOCRText)
-            }
-            if let c = item.proofContentState.displayValue, !c.isEmpty {
-                caseData["catalog_\(item.number)"] = .string(c)
-            }
-        }
-        for claim in caseFile.claims {
-            caseData["claim_\(claim.claimNumber)"] = .string(claim.content)
-        }
-        // LegalKnowledge citations as prompt context
-        // 尽力而为：法条库缺失/加载失败时跳过引用增强，不影响本地分析
-        let store = LawStore()
-        try? store.load(from: .main)
-        if store.chunkCount > 0 {
-            let query = caseFile.claims.map(\.content).joined(separator: " ")
-            let results = await LawIndex(store: store).search(query, k: 5)
-            let cites = results.map { "\($0.chunk.lawID)第\($0.chunk.articleNum)条" }
-            caseData["legal_citations"] = .string(cites.joined(separator: "; "))
-        }
-        // 确定性规则引擎 — 全部本地，零网络
-        let llm: any LLMBackend = RuleBasedLLM(rules: RuleBasedLLM.defaultRules())
-        let court = Court(statutes: statutes, procedure: procedure, llm: llm)
-        return await court.hear(caseData: caseData)
-    }
-
-    func applyVerdicts(_ result: CaseResult) {
-        let existingGapIDs = Set(caseFile.gaps.map { $0.description + $0.relatedClaim })
-        for v in result.verdicts {
-            // Skip template reasoning from RuleBasedLLM (regex noise)
-            let isTemplate = v.reasoning.contains("Rule-based detection")
-            // Only write to FieldState if verdict has real reasoning
-            if !v.reasoning.isEmpty && !isTemplate {
-                // Draft step named "draft_item_N": extract N, map to evidence item N-1
-                if let itemNum = parseItemNumber(from: v.finding), itemNum > 0, itemNum <= caseFile.evidenceItems.count {
-                    let item = caseFile.evidenceItems[itemNum - 1]
-                    _ = item.proofContentState.merge(newMachineValue: v.reasoning, directlyAffected: false, evidenceVersion: 0)
-                }
-            }
-            // Mark items stale only for real (non-template) findings
-            if !isTemplate {
-                for f in v.findings where !f.isEmpty {
-                    // Map finding location to item number if possible
-                    if let itemNum = parseItemNumber(from: f.location), itemNum > 0, itemNum <= caseFile.evidenceItems.count {
-                        caseFile.evidenceItems[itemNum - 1].proofContentState.stale = true
-                    }
-                }
-            }
-            // Deduplicate gaps
-            for f in v.findings where !f.isEmpty {
-                let key = f.detail + f.location
-                if !existingGapIDs.contains(key) {
-                    caseFile.gaps.append(GapItem(severity: f.kind == "gap" ? .high : .medium, description: f.detail, suggestedRemedy: v.reasoning, relatedClaim: f.location))
-                }
-            }
-        }
-    }
-
-    /// Extract item number from step names like "draft_item_3" or locations like "content:3"
-    private func parseItemNumber(from text: String) -> Int? {
-        if let r = text.range(of: #"\d+"#, options: .regularExpression) {
-            return Int(text[r])
-        }
-        return nil
-    }
-
-    func summary(from result: CaseResult) -> String {
-        let g = result.verdicts.flatMap(\.findings).filter { !$0.isEmpty }.count
-        return "\(result.verdicts.count) 项已处理\(g > 0 ? "，发现 \(g) 个问题" : "")"
-    }
-
-    func verifySnippets() {
-        var validator = EvidenceValidator()
-        for item in caseFile.evidenceItems where !item.sourceOCRText.isEmpty {
-            validator.addSource("evidence_\(item.number)", item.sourceOCRText)
-        }
-        for item in caseFile.evidenceItems {
-            guard !item.sourceOCRText.isEmpty else { continue }
-            let numbers = (item.proofContentState.displayValue ?? "").numbers
-            var allMatch = true
-            for num in numbers {
-                if !item.sourceOCRText.contains(num) { allMatch = false; break }
-            }
-            if !allMatch { item.proofContentState.stale = true }
-        }
-    }
-
-    // MARK: - File import → OCR
-
-    /// OCR an imported file (image, PDF, or plain text) into searchable text.
-    /// Runs on the global executor so Vision work stays off the main thread.
-    private static func recognizeText(from url: URL) async -> String {
-        guard url.startAccessingSecurityScopedResource() else { return "" }
-        defer { url.stopAccessingSecurityScopedResource() }
-
-        // Plain text files need no OCR
-        // 尽力而为：读取失败视为无文本，由导入流程标记该文件未识别
-        let ext = url.pathExtension.lowercased()
-        if ["txt", "text", "md", "csv"].contains(ext) {
-            return (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-        }
-
-        // Render image/PDF pages to CGImage, then run Vision OCR.
-        // recognizeTextChinese preprocesses each rendered page (grayscale,
-        // contrast stretch, deskew, binarization) before OCR so low-quality
-        // scans and handwritten Chinese annotations are recovered.
-        let collector = VisionEvidenceCollector()
-        var pages: [String] = []
-        for image in renderImages(from: url) {
-            // 尽力而为：单页 OCR 失败时跳过该页，不影响其余页面识别
-            if let result = try? await collector.recognizeTextChinese(in: image) {
-                pages.append(result.fullText)
-            }
-        }
-        return pages.filter { !$0.isEmpty }.joined(separator: "\n\n")
-    }
-
-    /// Render an image file or the pages of a PDF as CGImages.
-    /// Caller must hold the security-scoped resource access.
-    private static func renderImages(from url: URL) -> [CGImage] {
-        if url.pathExtension.lowercased() == "pdf" {
-            guard let document = PDFDocument(url: url) else { return [] }
-            let pageCount = min(document.pageCount, 10)
-            var images: [CGImage] = []
-            for pageIndex in 0..<pageCount {
-                guard let page = document.page(at: pageIndex) else { continue }
-                let box = page.bounds(for: .mediaBox)
-                let scale: CGFloat = 2.0 // render at 2x for better OCR accuracy
-                let size = CGSize(width: max(1, box.width * scale),
-                                  height: max(1, box.height * scale))
-                if let image = page.thumbnail(of: size, for: .mediaBox).cgImage {
-                    images.append(image)
-                }
-            }
-            return images
-        }
-
-        // Raster images (PNG/JPG/HEIC/…) via ImageIO
-        if let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-           let image = CGImageSourceCreateImageAtIndex(source, 0, nil) {
-            return [image]
-        }
-        return []
     }
 }
 
@@ -490,320 +155,7 @@ struct NeedsYouItem: Identifiable {
     var action: () -> Void
 }
 
-// MARK: - Case Header
-
-struct CaseHeader: View {
-    @Bindable var caseFile: CaseFile
-
-    var body: some View {
-        VStack(spacing: 8) {
-            HStack {
-                Text(caseFile.caseName.isEmpty ? "未命名案件" : caseFile.caseName)
-                    .font(.title3).fontWeight(.bold)
-                Spacer()
-                StageChip(stage: caseFile.stage)
-            }
-
-            HStack {
-                Label(caseFile.applicant, systemImage: "person.fill")
-                Text("v.")
-                Label(caseFile.respondent, systemImage: "building.2.fill")
-                Spacer()
-            }
-            .font(.caption).foregroundStyle(.secondary)
-
-            Divider().padding(.top, 4)
-        }
-        .padding(.horizontal).padding(.top, 8)
-    }
-
-}
-
-struct StageChip: View {
-    let stage: CaseStage
-    var body: some View {
-        Text(stage.rawValue)
-            .font(.caption).padding(.horizontal, 8).padding(.vertical, 3)
-            .background(color.opacity(0.12), in: Capsule()).foregroundStyle(color)
-    }
-    var color: Color {
-        switch stage {
-        case .drafting: return .gray; case .evidenceCollection: return .blue
-        case .catalogReview: return .orange; case .gapResolution: return .red
-        case .readyToFile: return .green
-        }
-    }
-}
-
-// MARK: - NeedsYou Section
-
-struct NeedsYouSection: View {
-    let items: [NeedsYouItem]
-    @Binding var expanded: Bool
-
-    let onTap: (NeedsYouItem) -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Button { withAnimation { expanded.toggle() } } label: {
-                HStack {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                    Text("待办 · \(items.count) 项").font(.subheadline).fontWeight(.semibold)
-                    Spacer()
-                    Image(systemName: expanded ? "chevron.up" : "chevron.down").font(.caption)
-                }
-                .padding(.horizontal).padding(.vertical, 10)
-                .background(.orange.opacity(0.06))
-            }
-            .buttonStyle(.plain)
-
-            if expanded {
-                VStack(spacing: 6) {
-                    ForEach(items) { item in
-                        Button { onTap(item) } label: {
-                            NeedsYouRow(item: item)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal).padding(.bottom, 8)
-                .background(.orange.opacity(0.03))
-            }
-        }
-    }
-}
-
-struct NeedsYouRow: View {
-    let item: NeedsYouItem
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: item.kind == .conflict ? "xmark.shield.fill" :
-                  item.kind == .gap ? "exclamationmark.triangle" : "eye")
-                .font(.caption).foregroundStyle(item.kind == .conflict ? .red : .orange)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.title).font(.callout)
-                if !item.detail.isEmpty {
-                    Text(item.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                }
-            }
-            Spacer()
-            Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.quaternary)
-        }
-        .padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-    }
-}
-
-// MARK: - Claims Section
-
-struct ClaimsSection: View {
-    @Bindable var caseFile: CaseFile
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SectionHeader(title: "仲裁请求", count: caseFile.claims.count,
-                          icon: "list.number")
-            if caseFile.claims.isEmpty {
-                Text("暂无请求 — 输入指令让 AI 草拟").font(.caption).foregroundStyle(.tertiary)
-                    .padding(.horizontal)
-            } else {
-                ForEach(caseFile.claims) { claim in
-                    ClaimCard(claim: claim)
-                        .padding(.horizontal)
-                }
-            }
-        }
-        .padding(.vertical, 8)
-    }
-}
-
-struct ClaimCard: View {
-    let claim: ClaimItem
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("请求 \(claim.claimNumber)").font(.caption).foregroundStyle(.blue)
-                Spacer()
-            }
-            Text(claim.content).font(.subheadline)
-            if !claim.legalBasis.isEmpty {
-                Text(claim.legalBasis).font(.caption2).foregroundStyle(.secondary)
-            }
-        }
-        .padding(10).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-    }
-}
-
-// MARK: - Evidence Section
-
-struct EvidenceSection: View {
-    @Bindable var caseFile: CaseFile
-    let onAdd: () -> Void
-    let onEdit: (EvidenceItem) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                SectionHeader(title: "证据目录", count: caseFile.evidenceItems.count,
-                              icon: "list.clipboard")
-                Spacer()
-                Button(action: onAdd) {
-                    Image(systemName: "plus.circle.fill").font(.title3)
-                }
-            }
-            .padding(.horizontal)
-
-            if caseFile.evidenceItems.isEmpty {
-                Text("点击 + 添加证据，或拖入文件").font(.caption).foregroundStyle(.tertiary)
-                    .padding(.horizontal)
-            }
-
-            ForEach(groups, id: \.self) { group in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(group).font(.caption).fontWeight(.medium)
-                        .foregroundStyle(.secondary).padding(.horizontal)
-                    ForEach(caseFile.evidenceItems.filter { $0.group == group }) { item in
-                        Button { onEdit(item) } label: {
-                            EvidenceCard(item: item)
-                        }
-                        .buttonStyle(.plain).padding(.horizontal)
-                    }
-                }
-            }
-        }
-        .padding(.vertical, 8)
-    }
-
-    var groups: [String] {
-        let all = Set(caseFile.evidenceItems.map(\.group)).filter { !$0.isEmpty }
-        return all.isEmpty ? ["未分组"] : Array(all).sorted()
-    }
-}
-
-struct EvidenceCard: View {
-    let item: EvidenceItem
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("编号 \(item.number)").font(.caption).foregroundStyle(.blue)
-                Spacer()
-                EvidenceStatusChip(item: item)
-            }
-            Text(item.name).font(.subheadline).fontWeight(.medium)
-            if let content = item.proofContentState.displayValue, !content.isEmpty {
-                Text(content).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-            }
-            HStack(spacing: 8) {
-                Label(item.isOriginal ? "原件" : "复印件",
-                      systemImage: item.isOriginal ? "doc.fill" : "doc")
-                Label("\(item.pageCount)页", systemImage: "text.page")
-                if !item.sourceOCRText.isEmpty {
-                    Label("有源文件", systemImage: "text.viewfinder")
-                        .foregroundStyle(.green)
-                }
-            }
-            .font(.caption2).foregroundStyle(.secondary)
-        }
-        .padding(10).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-    }
-}
-
-struct EvidenceStatusChip: View {
-    let item: EvidenceItem
-    var body: some View {
-        HStack(spacing: 3) {
-            Image(systemName: icon).font(.caption2)
-            Text(label).font(.caption2)
-        }
-        .padding(.horizontal, 6).padding(.vertical, 2)
-        .background(color.opacity(0.12), in: Capsule()).foregroundStyle(color)
-    }
-    var icon: String {
-        if item.humanReviewed { return "checkmark.shield.fill" }
-        if item.proofContentState.stale { return "exclamationmark.triangle.fill" }
-        if item.proofContentState.status == .machineDraft { return "circle.dotted" }
-        return "circle"
-    }
-    var label: String {
-        if item.humanReviewed { return "已确认" }
-        if item.proofContentState.stale { return "待更新" }
-        if item.proofContentState.status == .machineDraft { return "AI草稿" }
-        return "待核实"
-    }
-    var color: Color {
-        if item.humanReviewed { return .green }
-        if item.proofContentState.stale { return .orange }
-        if item.proofContentState.status == .machineDraft { return .blue }
-        return .gray
-    }
-}
-
-// MARK: - Activity Section
-
-// MARK: - Goal Progress View
-
-struct GoalProgressView: View {
-    let goal: Goal
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Image(systemName: goal.isComplete ? "checkmark.circle.fill" : "circle.grid.cross.fill")
-                    .foregroundStyle(goal.isComplete ? .green : .blue)
-                Text(goal.description).font(.subheadline).fontWeight(.semibold)
-                Spacer()
-                Text("\(Int(goal.progress * 100))%").font(.caption).foregroundStyle(.secondary)
-            }
-            .padding(.horizontal).padding(.vertical, 10)
-
-            ProgressView(value: goal.progress)
-                .padding(.horizontal).padding(.bottom, 4)
-
-            ForEach(goal.steps) { step in
-                HStack(spacing: 10) {
-                    Image(systemName: step.status == .done ? "checkmark.circle.fill" :
-                           step.status == .running ? "circle.dotted" :
-                           step.status == .failed ? "xmark.circle.fill" : "circle")
-                        .foregroundStyle(step.status == .done ? .green :
-                                         step.status == .running ? .blue :
-                                         step.status == .failed ? .red : .gray)
-                        .font(.caption)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(step.name).font(.caption).fontWeight(.medium)
-                        Text(step.status == .done ? step.resultSummary : step.detail)
-                            .font(.caption2).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal).padding(.vertical, 4)
-            }
-            Divider().padding(.top, 4)
-        }
-        .background(.blue.opacity(0.04))
-    }
-}
-
-struct ActivitySection: View {
-    let caseFile: CaseFile
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            SectionHeader(title: "最近动态", count: nil, icon: "clock.arrow.circlepath")
-                .padding(.horizontal)
-            Text(activitySummary)
-                .font(.caption).foregroundStyle(.tertiary)
-                .padding(.horizontal)
-        }
-        .padding(.vertical, 8)
-    }
-
-    var activitySummary: String {
-        let total = caseFile.evidenceItems.count
-        let reviewed = caseFile.evidenceItems.filter(\.humanReviewed).count
-        if total == 0 { return "尚无活动" }
-        return "\(total) 项证据 · \(reviewed) 项已确认"
-    }
-}
-
-// MARK: - Shared components
+// MARK: - 共享组件
 
 /// 状态提示条：展示 statusMessage（操作结果 / 错误反馈），可手动关闭。
 struct StatusBanner: View {
@@ -851,6 +203,22 @@ struct SectionHeader: View {
     }
 }
 
+struct StageChip: View {
+    let stage: CaseStage
+    var body: some View {
+        Text(stage.rawValue)
+            .font(.caption).padding(.horizontal, 8).padding(.vertical, 3)
+            .background(color.opacity(0.12), in: Capsule()).foregroundStyle(color)
+    }
+    var color: Color {
+        switch stage {
+        case .drafting: return .gray; case .evidenceCollection: return .blue
+        case .catalogReview: return .orange; case .gapResolution: return .red
+        case .readyToFile: return .green
+        }
+    }
+}
+
 // MARK: - Command Bar
 
 struct CommandBar: View {
@@ -894,79 +262,3 @@ struct CommandBar: View {
         .background(.ultraThinMaterial)
     }
 }
-
-// MARK: - Evidence Editor (unchanged from v2)
-
-struct EvidenceEditorView: View {
-    @Bindable var item: EvidenceItem
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("基本信息") {
-                    TextField("组别", text: $item.group)
-                    TextField("证据名称", text: $item.name)
-                    Stepper("编号: \(item.number)", value: $item.number, in: 1...99)
-                    Toggle("原件", isOn: $item.isOriginal)
-                    Stepper("页码: \(item.pageCount)", value: $item.pageCount, in: 1...999)
-                }
-
-                Section("证明内容") {
-                    TextEditor(text: Binding(
-                        get: { item.proofContentState.displayValue ?? "" },
-                        set: { item.proofContentState.override(with: $0) }
-                    ))
-                    .frame(minHeight: 100).font(.callout)
-                    if item.proofContentState.status == .machineDraft {
-                        Label("AI 草稿，请核实后确认", systemImage: "info.circle")
-                            .font(.caption).foregroundStyle(.blue)
-                    }
-                    if item.humanReviewed {
-                        Label("已逐项核对确认", systemImage: "checkmark.shield.fill")
-                            .font(.caption).foregroundStyle(.green)
-                    }
-                }
-
-                Section("证明目的") {
-                    TextEditor(text: Binding(
-                        get: { item.proofPurposeState.displayValue ?? "" },
-                        set: { item.proofPurposeState.override(with: $0) }
-                    ))
-                    .frame(minHeight: 80).font(.callout)
-                }
-
-                Section("源文件 OCR") {
-                    if item.sourceOCRText.isEmpty {
-                        Text("尚未导入源文件").font(.caption).foregroundStyle(.secondary)
-                    } else {
-                        Text(item.sourceOCRText).font(.caption).foregroundStyle(.secondary).lineLimit(10)
-                    }
-                }
-
-                Section {
-                    Button {
-                        item.humanReviewed = true
-                        item.proofContentState.confirm()
-                        item.proofPurposeState.confirm()
-                        dismiss()
-                    } label: {
-                        Label("我已逐项核对，确认与原件一致", systemImage: "checkmark.shield.fill")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(item.proofContentState.displayValue?.isEmpty != false)
-                }
-            }
-            .navigationTitle("编辑证据")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("完成") { dismiss() }
-                }
-            }
-        }
-    }
-}
-
-// MARK: - Share Sheet (replaced by native ShareLink in the toolbar menu)

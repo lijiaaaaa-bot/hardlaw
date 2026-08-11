@@ -215,6 +215,10 @@ final class CaseEvaluationTests: XCTestCase {
         }
 
         print("\n匹配率: \(matchedCount)/\(groundTruthGaps.count)")
+
+        // 至少命中 1 个律师手写缺口（混同用工人员身份是确定性检测项）
+        XCTAssertGreaterThan(matchedCount, 0,
+                             "App 自动检测应至少命中一个律师手写缺口，实际 \(matchedCount)/\(groundTruthGaps.count)")
     }
 
     // MARK: - 评估 3：引用验证（EvidenceValidator 子串检查）

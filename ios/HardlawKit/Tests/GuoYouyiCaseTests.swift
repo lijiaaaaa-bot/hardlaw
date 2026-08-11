@@ -570,6 +570,7 @@ final class GuoYouyiCaseTests: XCTestCase {
 
     func testSeveranceCalculationCODE() async throws {
         // Simple procedure: just the CODE step for calculation
+        let box = SeveranceBox()
         let procedure = try Procedure(
             name: "severance_check",
             steps: [
@@ -577,7 +578,10 @@ final class GuoYouyiCaseTests: XCTestCase {
                      handler: { ctx in
                          let monthly = 7550
                          let years = 5
-                         ctx.metadata["result"] = JSONValue.number(Double(monthly * years))
+                         let amount = Double(monthly * years)
+                         box.amount = amount
+                         box.formula = "\(monthly) × \(years)"
+                         ctx.metadata["result"] = JSONValue.number(amount)
                          ctx.metadata["formula"] = JSONValue.string("\(monthly) × \(years)")
                      },
                      transitions: [:])
@@ -589,9 +593,11 @@ final class GuoYouyiCaseTests: XCTestCase {
             "work_years": .string("5"),
         ])
 
-        // The CODE step handler calculated 7550 × 5 = 37750
-        // This is the expected severance amount: 37750元
-        print("经济补偿金计算结果: \(result.finalDisposition)")
+        // 经济补偿金 = 月工资 × 工作年限 = 7550 × 5 = 37750
+        XCTAssertEqual(box.amount, 37750, "CODE 步应计算 7550 × 5 = 37750")
+        XCTAssertEqual(box.formula, "7550 × 5", "计算公式应为 月工资 × 年限")
+        XCTAssertEqual(result.finalDisposition, .terminalStep, "终态 CODE 步应结束审理")
+        XCTAssertEqual(result.roundCount, 1, "单步流程只应审理一轮")
     }
 
     // MARK: - 场景四：证据验证 — snippet 子串检查
@@ -616,4 +622,10 @@ final class GuoYouyiCaseTests: XCTestCase {
 
         print("证据验证: 真实snippet通过, 幻觉snippet被拦截, 未注册来源被拦截")
     }
+}
+
+/// 捕获 CODE 步 handler 内部计算结果的盒子（handler 是 @Sendable 闭包）。
+private final class SeveranceBox: @unchecked Sendable {
+    var amount: Double?
+    var formula: String?
 }
