@@ -82,7 +82,11 @@ final class LegalKnowledgeTests: XCTestCase {
         try store.load(from: testBundle())
         let tokens = store.tokenize("未签劳动合同的双倍工资")
         XCTAssertTrue(!tokens.isEmpty)
-        XCTAssertTrue(tokens.contains("劳动合同"))
+        // NLTokenizer segments 劳动合同 as the words 劳动 + 合同
+        XCTAssertTrue(tokens.contains("劳动"))
+        XCTAssertTrue(tokens.contains("合同"))
+        // Single-character tokens (未/签/的/双/倍) are filtered out
+        XCTAssertTrue(!tokens.contains("的"))
     }
 
     func testStopWordFiltering() async throws {
@@ -90,7 +94,9 @@ final class LegalKnowledgeTests: XCTestCase {
         try store.load(from: testBundle())
         let tokens = store.tokenize("拖欠工资怎么办")
         XCTAssertTrue(!tokens.contains("怎么办"))
-        XCTAssertTrue(tokens.contains("拖欠工资"))
+        // NLTokenizer segments 拖欠工资 as the words 拖欠 + 工资
+        XCTAssertTrue(tokens.contains("拖欠"))
+        XCTAssertTrue(tokens.contains("工资"))
     }
 }
 
