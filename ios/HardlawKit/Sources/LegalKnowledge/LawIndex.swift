@@ -44,7 +44,9 @@ public final class LawIndex: @unchecked Sendable {
     private var embeddingProvider: (any EmbeddingProvider)?
 
     /// Number of loaded document vectors.
-    public var vectorCount: Int { nVectors }
+    public var vectorCount: Int {
+        lock.withLock { nVectors }
+    }
 
     /// Whether document vectors have been loaded.
     public var vectorsLoaded: Bool {
@@ -157,6 +159,16 @@ public final class LawIndex: @unchecked Sendable {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
 
+        // Lazy wiring: attach the on-device CoreML embedding provider and load
+        // the pre-computed document vectors on first use. Failures here are
+        // non-fatal — keyword-only search below still works.
+        if !lock.withLock({ embeddingProvider != nil }) {
+            setEmbeddingProvider(CoreMLEmbeddingProvider())
+        }
+        if !vectorsLoaded {
+            try? loadVectors()
+        }
+
         // Build chunk lookup map
         let chunkMap = Dictionary(
             uniqueKeysWithValues: store.chunks.map { ($0.id, $0) }
@@ -168,9 +180,10 @@ public final class LawIndex: @unchecked Sendable {
             ($0.element.chunk.id, Float($0.offset))
         }
 
-        // Try semantic search
+        // Try semantic search — snapshot shared state under the lock.
         var semRanked: [(id: String, rank: Float)] = []
-        if _vectorsLoaded, let provider = embeddingProvider {
+        let (vectorsReady, provider) = lock.withLock { (_vectorsLoaded, embeddingProvider) }
+        if vectorsReady, let provider = provider {
             do {
                 let queryVec = try await provider.embed(trimmed)
                 semRanked = semanticSearch(queryVec, k: k * 3)
@@ -212,10 +225,16 @@ public final class LawIndex: @unchecked Sendable {
         _ queryVec: [Float],
         k: Int
     ) -> [(id: String, rank: Float)] {
-        guard queryVec.count == vectorDim else { return [] }
+        // Snapshot shared state under the lock. The array copies are O(1)
+        // via copy-on-write: `loadVectors` swaps the arrays in place under
+        // the same lock, so no other thread can mutate while we hold a
+        // reference (this also fixes the data race on `vectorDim`/`nVectors`).
+        let (docVectors, vectorIDs, n, dim) = lock.withLock {
+            (self.docVectors, self.vectorIDs, self.nVectors, self.vectorDim)
+        }
 
-        let n = nVectors
-        let dim = vectorDim
+        guard queryVec.count == dim else { return [] }
+
         let effectiveK = min(k, n)
 
         // Compute inner product: scores[i] = sum(queryVec[j] * docVectors[i*dim + j])

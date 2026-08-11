@@ -3,8 +3,13 @@
 convert_bge_to_coreml.py — Convert BAAI/bge-small-zh-v1.5 to CoreML for iOS.
 
 Outputs:
-  ios/HardlawKit/Resources/bge-small-zh-v1.5.mlpackage/  — CoreML model
-  ios/HardlawKit/Resources/bge-small-zh-v1.5-tokenizer/   — vocab.txt + tokenizer_config.json
+  ios/HardlawApp/bge-small-zh-v1.5.mlpackage/  — CoreML model (must be added
+      as an explicit resource in project.yml so Xcode compiles it to
+      .mlmodelc; folder references do NOT compile CoreML models)
+  ios/HardlawApp/LegalKnowledge/vocab.txt      — BERT vocab (folder reference;
+      CoreMLEmbeddingProvider finds it next to the laws_* files in
+      Bundle.main)
+  ios/HardlawApp/LegalKnowledge/tokenizer_config.json
 
 Prerequisites:
   pip install coremltools sentence-transformers torch
@@ -32,9 +37,12 @@ MAX_SEQ_LEN = 512
 OUTPUT_DIM = 512
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-IOS_RESOURCES = PROJECT_ROOT / "ios" / "HardlawKit" / "Resources"
-COREML_OUTPUT = IOS_RESOURCES / "bge-small-zh-v1.5.mlpackage"
-TOKENIZER_OUTPUT = IOS_RESOURCES / "bge-small-zh-v1.5-tokenizer"
+# The kit no longer keeps its own LegalKnowledge duplicate — the app bundle
+# is the single source of truth. Bundle.main resolves these folders at
+# runtime on both device and simulator.
+APP_DIR = PROJECT_ROOT / "ios" / "HardlawApp"
+COREML_OUTPUT = APP_DIR / "bge-small-zh-v1.5.mlpackage"
+TOKENIZER_OUTPUT = APP_DIR / "LegalKnowledge"
 
 
 def main() -> None:
@@ -198,7 +206,8 @@ def main() -> None:
         else:
             raise RuntimeError(f"No tokenizer config found at {model_dir}")
 
-    print(f"\nDone! CoreML model and tokenizer saved to {IOS_RESOURCES}/")
+    print(f"\nDone! CoreML model saved to {COREML_OUTPUT}")
+    print(f"Tokenizer files saved to {TOKENIZER_OUTPUT}/")
 
 
 if __name__ == "__main__":
