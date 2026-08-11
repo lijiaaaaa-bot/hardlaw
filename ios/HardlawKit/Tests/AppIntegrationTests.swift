@@ -145,4 +145,35 @@ final class AppIntegrationTests: XCTestCase {
         XCTAssertTrue(result.message.contains("= 45300 元"),
                       "7550 × 6 = 45300：\(result.message)")
     }
+
+    // MARK: - 7. 证据齐备 → RuleBasedLLM 模板推理不得产生假缺口
+
+    func testCompleteEvidenceProducesNoFalseGaps() async {
+        // 社保 + 合同 + 公积金 证据齐备：OCR 原文包含全部关键词
+        let cf = makeCase()
+        cf.evidenceItems.append(EvidenceItem(
+            number: 1, name: "劳动合同",
+            proofContent: "合同期限：2025年7月1日至2028年6月30日，月工资：7550元",
+            sourceOCRText: "劳动合同 甲方：河南达海建设工程有限公司 乙方：郭又义 月工资：7550元"))
+        cf.evidenceItems.append(EvidenceItem(
+            number: 2, name: "社会保险参保证明",
+            proofContent: "参保单位：河南达海建设工程有限公司，参保起始：2020年7月1日",
+            sourceOCRText: "河南省社会保险个人参保证明 参保人：郭又义 参保单位：河南达海建设工程有限公司 参保起始：2020年7月1日"))
+        cf.evidenceItems.append(EvidenceItem(
+            number: 3, name: "住房公积金缴存证明",
+            proofContent: "缴存单位：河南达海建设工程有限公司",
+            sourceOCRText: "个人住房公积金查询书 缴存单位：河南达海建设工程有限公司"))
+
+        let vm = CourtViewModel(caseFile: cf)
+        let goal = vm.makeReviewGoal()
+        XCTAssertFalse(goal.steps.isEmpty, "审查 goal 应包含至少一个步骤")
+
+        await vm.runGoalSteps(goal)
+
+        XCTAssertEqual(vm.goal?.status, .done, "goal 应正常完成")
+        // 证据齐备时 regex 命中只是"关键词存在"，不是"证据缺失"——
+        // 模板推理（Rule-based detection）不得落成缺口（Bug 1 回归）
+        XCTAssertTrue(cf.gaps.isEmpty,
+                      "证据齐备时不应产生假缺口，实际产生：\(cf.gaps.map { "\($0.description)@\($0.relatedClaim)" })")
+    }
 }

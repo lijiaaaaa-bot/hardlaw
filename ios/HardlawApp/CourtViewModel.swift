@@ -261,14 +261,19 @@ final class CourtViewModel {
                     }
                 }
             }
-            // Deduplicate gaps — same detail+location never appended twice
-            for f in v.findings where !f.isEmpty {
-                let key = f.detail + f.location
-                if gapKeys.insert(key).inserted {
-                    caseFile.gaps.append(GapItem(severity: f.kind == "gap" ? .high : .medium,
-                                                 description: f.detail,
-                                                 suggestedRemedy: v.reasoning,
-                                                 relatedClaim: f.location))
+            // Deduplicate gaps — same detail+location never appended twice.
+            // Template reasoning must never create gaps: the regex engine cannot
+            // distinguish "evidence is present" from "evidence is missing", so
+            // its findings are noise that would produce 假缺口 false positives.
+            if !isTemplate {
+                for f in v.findings where !f.isEmpty {
+                    let key = f.detail + f.location
+                    if gapKeys.insert(key).inserted {
+                        caseFile.gaps.append(GapItem(severity: f.kind == "gap" ? .high : .medium,
+                                                     description: f.detail,
+                                                     suggestedRemedy: v.reasoning,
+                                                     relatedClaim: f.location))
+                    }
                 }
             }
         }

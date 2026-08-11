@@ -29,19 +29,23 @@ public enum CourtProcedures {
     // MARK: - Gap Detection
 
     /// Build a procedure that checks for evidence gaps using the labor law statutes.
+    /// Each JUDGMENT step maps "blocked" to the same next step as "refuted":
+    /// a hard evidence validation failure (e.g. rule-based refs cite a generic
+    /// source while statutes require named evidence types) must continue the
+    /// procedure instead of aborting it after a single verdict.
     public static func gapDetection() throws -> Procedure {
         try Procedure(
             name: "gap_detection",
             steps: [
                 Step(name: "check_employment", kind: .judgment,
                      statutes: ["劳动关系确认"],
-                     transitions: ["not_refuted": "check_wages", "refuted": "check_wages"]),
+                     transitions: ["not_refuted": "check_wages", "refuted": "check_wages", "blocked": "check_wages"]),
                 Step(name: "check_wages", kind: .judgment,
                      statutes: ["拖欠工资"],
-                     transitions: ["not_refuted": "check_mixed", "refuted": "check_mixed"]),
+                     transitions: ["not_refuted": "check_mixed", "refuted": "check_mixed", "blocked": "check_mixed"]),
                 Step(name: "check_mixed", kind: .judgment,
                      statutes: ["关联企业混同用工"],
-                     transitions: ["not_refuted": "collect", "refuted": "collect"]),
+                     transitions: ["not_refuted": "collect", "refuted": "collect", "blocked": "collect"]),
                 Step(name: "collect", kind: .code,
                      handler: { ctx in
                          let gaps = ctx.findings.flatMap { v in v.findings.filter { !$0.isEmpty } }
@@ -70,13 +74,13 @@ public enum CourtProcedures {
         }
         steps.append(Step(name: "check_employment", kind: .judgment,
             statutes: ["劳动关系确认"],
-            transitions: ["not_refuted": "check_wages", "refuted": "check_wages"]))
+            transitions: ["not_refuted": "check_wages", "refuted": "check_wages", "blocked": "check_wages"]))
         steps.append(Step(name: "check_wages", kind: .judgment,
             statutes: ["拖欠工资"],
-            transitions: ["not_refuted": "check_mixed", "refuted": "check_mixed"]))
+            transitions: ["not_refuted": "check_mixed", "refuted": "check_mixed", "blocked": "check_mixed"]))
         steps.append(Step(name: "check_mixed", kind: .judgment,
             statutes: ["关联企业混同用工"],
-            transitions: ["not_refuted": "collect", "refuted": "collect"]))
+            transitions: ["not_refuted": "collect", "refuted": "collect", "blocked": "collect"]))
         steps.append(Step(name: "collect", kind: .code,
             handler: { ctx in
                 let gaps = ctx.findings.flatMap { v in v.findings.filter { !$0.isEmpty } }
@@ -89,13 +93,15 @@ public enum CourtProcedures {
     // MARK: - Consistency Check
 
     /// Cross-check salary amounts across evidence items.
+    /// "blocked" maps to "done" like "refuted": hard evidence validation
+    /// failure should still complete the check, not abort the procedure.
     public static func salaryConsistency() throws -> Procedure {
         try Procedure(
             name: "salary_check",
             steps: [
                 Step(name: "check_salary", kind: .judgment,
                      statutes: ["工资标准核实"],
-                     transitions: ["not_refuted": "done", "refuted": "done"]),
+                     transitions: ["not_refuted": "done", "refuted": "done", "blocked": "done"]),
                 Step(name: "done", kind: .code, transitions: [:]),
             ],
             maxRounds: 2
