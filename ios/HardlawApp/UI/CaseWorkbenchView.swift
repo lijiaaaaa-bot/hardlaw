@@ -360,19 +360,43 @@ struct CaseWorkbenchView: View {
     }
 
     func applyVerdicts(_ result: CaseResult) {
-        for (i, verdict) in result.verdicts.enumerated() {
-            guard i < caseFile.evidenceItems.count else { break }
-            let item = caseFile.evidenceItems[i]
-            if !verdict.reasoning.isEmpty {
-                _ = item.proofContentState.merge(newMachineValue: verdict.reasoning, directlyAffected: false, evidenceVersion: 0)
-            }
-            for f in verdict.findings where !f.isEmpty { item.proofContentState.stale = true }
-        }
+        let existingGapIDs = Set(caseFile.gaps.map { $0.description + $0.relatedClaim })
         for v in result.verdicts {
+            // Skip template reasoning from RuleBasedLLM (regex noise)
+            let isTemplate = v.reasoning.contains("Rule-based detection")
+            // Only write to FieldState if verdict has real reasoning
+            if !v.reasoning.isEmpty && !isTemplate {
+                // Draft step named "draft_item_N": extract N, map to evidence item N-1
+                if let itemNum = parseItemNumber(from: v.finding), itemNum > 0, itemNum <= caseFile.evidenceItems.count {
+                    let item = caseFile.evidenceItems[itemNum - 1]
+                    _ = item.proofContentState.merge(newMachineValue: v.reasoning, directlyAffected: false, evidenceVersion: 0)
+                }
+            }
+            // Mark items stale only for real (non-template) findings
+            if !isTemplate {
+                for f in v.findings where !f.isEmpty {
+                    // Map finding location to item number if possible
+                    if let itemNum = parseItemNumber(from: f.location), itemNum > 0, itemNum <= caseFile.evidenceItems.count {
+                        caseFile.evidenceItems[itemNum - 1].proofContentState.stale = true
+                    }
+                }
+            }
+            // Deduplicate gaps
             for f in v.findings where !f.isEmpty {
-                caseFile.gaps.append(GapItem(severity: f.kind == "gap" ? .high : .medium, description: f.detail, suggestedRemedy: v.reasoning, relatedClaim: f.location))
+                let key = f.detail + f.location
+                if !existingGapIDs.contains(key) {
+                    caseFile.gaps.append(GapItem(severity: f.kind == "gap" ? .high : .medium, description: f.detail, suggestedRemedy: v.reasoning, relatedClaim: f.location))
+                }
             }
         }
+    }
+
+    /// Extract item number from step names like "draft_item_3" or locations like "content:3"
+    private func parseItemNumber(from text: String) -> Int? {
+        if let r = text.range(of: #"\d+"#, options: .regularExpression) {
+            return Int(text[r])
+        }
+        return nil
     }
 
     func summary(from result: CaseResult) -> String {

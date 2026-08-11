@@ -46,11 +46,18 @@ public actor RuleBasedLLM: LLMBackend {
     /// Judge content by applying all rules.
     /// Returns JSON string conforming to the Court's OUTPUT CONTRACT.
     public func judge(_ prompt: String) async throws -> String {
-        // Extract case data from the markdown prompt
-        // Look for the content section between "## CASE DATA" and next "##"
-        let content = extractContentField(from: prompt, field: "content")
-            ?? extractContentField(from: prompt, field: "ocr_frame")
-            ?? prompt
+        // Extract evidence text from Court's prompt structure.
+        // Court generates `### evidence_N` keys (Court.swift:_buildJudgmentPrompt).
+        // Concatenate all evidence fields; fall back to full prompt if none found.
+        let content: String
+        let evidenceTexts = extractAllEvidenceFields(from: prompt)
+        if evidenceTexts.isEmpty {
+            content = extractContentField(from: prompt, field: "content")
+                ?? extractContentField(from: prompt, field: "ocr_frame")
+                ?? prompt
+        } else {
+            content = evidenceTexts.joined(separator: "\n")
+        }
 
         var findings: [[String: String]] = []
         var evidenceRefs: [[String: Any]] = []
@@ -119,6 +126,16 @@ public actor RuleBasedLLM: LLMBackend {
             return nil
         }
         return String(prompt[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Extract all `### evidence_N` and `### catalog_N` fields from Court's prompt.
+    /// Court.swift:_buildJudgmentPrompt generates these keys for each evidence item.
+    private func extractAllEvidenceFields(from prompt: String) -> [String] {
+        let pattern = "### (?:evidence|catalog)_\\d+\\n([\\s\\S]*?)(?=\\n###|\\n##|\\Z)"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return [] }
+        return regex.matches(in: prompt, range: NSRange(prompt.startIndex..., in: prompt)).compactMap { match in
+            Range(match.range(at: 1), in: prompt).map { String(prompt[$0]).trimmingCharacters(in: .whitespacesAndNewlines) }
+        }
     }
 }
 

@@ -234,33 +234,40 @@ public struct IntentHandler {
         let years = extractWorkYears(from: caseFile)
 
         if let wage, let years {
-            let amount = wage * years
-            let roundingNote = years.truncatingRemainder(dividingBy: 1) == 0
-                ? "每满一年支付一个月工资"
-                : "每满一年支付一个月工资；六个月以上不满一年按一年计算，不满六个月支付半个月工资"
+            // 《劳动合同法》第47条：每满一年支付一个月工资；
+            // 六个月以上不满一年的按一年计算；不满六个月的支付半个月工资。
+            let fullYears = Int(floor(years))
+            let remainder = years - Double(fullYears)
+            let compensatedYears: Int
+            if remainder >= 0.5 { compensatedYears = fullYears + 1 }
+            else { compensatedYears = fullYears }
+            let amount = wage * Double(compensatedYears)
+            let detail = years.truncatingRemainder(dividingBy: 1) == 0
+                ? "满 \(fullYears) 年 → \(compensatedYears) 个月工资"
+                : "\(fullYears) 年 + \(String(format: "%.1f", remainder * 12)) 个月 → 按 \(compensatedYears) 个月工资计算"
             return IntentResult(
                 action: .none,
-                message: "经济补偿金 ≈ 月工资 \(format(wage)) 元 × 工作年限 \(format(years)) 年 = \(format(amount)) 元（依据《劳动合同法》第47条：\(roundingNote)）",
+                message: "经济补偿金 = 月工资 \(format(wage)) 元 × \(compensatedYears) 个月 = \(format(amount)) 元（依据《劳动合同法》第47条：\(detail)）",
                 success: true
             )
         }
         if let wage {
             return IntentResult(
                 action: .none,
-                message: "经济补偿金计算：已提取月工资 \(format(wage)) 元，但未确认工作年限。请补充劳动合同/参保证明，或输入如「工作 3 年」。",
+                message: "经济补偿金：已提取月工资 \(format(wage)) 元，但未确认工作年限。补充合同或输入如「工作 3 年」。",
                 success: false
             )
         }
         if let years {
             return IntentResult(
                 action: .none,
-                message: "经济补偿金计算：已确认工作年限 \(format(years)) 年，但未从证据中找到月工资标准。请补充工资流水/工资表，或输入如「月工资 8000 元」。",
+                message: "经济补偿金：已确认工作年限 \(format(years)) 年，但未从证据中找到月工资。补充工资表/流水。",
                 success: false
             )
         }
         return IntentResult(
             action: .none,
-            message: "经济补偿金计算：未从证据中找到月工资标准和工作年限。请补充工资流水与劳动合同，或直接输入如「月工资 8000 元，工作 3 年」。",
+            message: "经济补偿金：未找到月工资和工作年限。补充工资表与劳动合同，或输入如「月工资 8000 元，工作 3 年」。",
             success: false
         )
     }
