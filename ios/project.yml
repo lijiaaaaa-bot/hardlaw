@@ -6,6 +6,17 @@ options:
   createIntermediateGroups: true
   xcodeVersion: "16.0"
 
+packages:
+  mlx-swift-lm:
+    url: https://github.com/ml-explore/mlx-swift-lm
+    branch: main
+  swift-huggingface:
+    url: https://github.com/huggingface/swift-huggingface
+    branch: main
+  swift-transformers:
+    url: https://github.com/huggingface/swift-transformers
+    from: "1.1.6"
+
 settings:
   base:
     SWIFT_VERSION: "6.0"
@@ -18,6 +29,17 @@ targets:
     sources:
       - path: HardlawKit/Sources
       - path: HardlawKit/Vision
+    dependencies:
+      - package: mlx-swift-lm
+        product: MLXLLM
+      - package: mlx-swift-lm
+        product: MLXLMCommon
+      - package: mlx-swift-lm
+        product: MLXHuggingFace
+      - package: swift-huggingface
+        product: HuggingFace
+      - package: swift-transformers
+        product: Tokenizers
     settings:
       base:
         GENERATE_INFOPLIST_FILE: true

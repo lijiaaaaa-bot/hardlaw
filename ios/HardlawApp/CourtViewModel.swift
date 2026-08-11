@@ -228,8 +228,8 @@ final class CourtViewModel {
             let cites = results.map { "\($0.chunk.lawID)第\($0.chunk.articleNum)条" }
             caseData["legal_citations"] = .string(cites.joined(separator: "; "))
         }
-        // 确定性规则引擎 — 全部本地，零网络
-        let llm: any LLMBackend = RuleBasedLLM(rules: RuleBasedLLM.defaultRules())
+        // MLX on-device LLM — iPhone GPU via Metal
+        let llm: any LLMBackend = MLXLLM()
         let court = Court(statutes: statutes, procedure: procedure, llm: llm)
         return await court.hear(caseData: caseData)
     }
