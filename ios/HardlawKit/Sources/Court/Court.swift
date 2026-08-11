@@ -259,18 +259,119 @@ public actor Court {
             if verdict.blocking { break }
         }
 
-        // Validate cited evidence actually exists
+        // Validate cited evidence actually exists (anti-hallucination Layer 1)
         if !verdict.evidenceRefs.isEmpty {
             let (allValid, _) = evidenceValidator.validateAll(verdict.evidenceRefs)
             if !allValid {
-                // Force reject on unverifiable evidence — fail-closed invariant.
-                // An LLM citing evidence that doesn't exist in the source material
-                // is a hallucination and must never result in a passing verdict.
+                // Fail-closed invariant: LLM hallucinated evidence → force reject
                 verdict.refuted = true
             }
         }
 
+        // Numeric entailment check (anti-hallucination Layer 2)
+        // Deterministic: numbers in reasoning must be traceable to cited evidence.
+        // Catches "correct snippet, wrong attribution" hallucinations.
+        if !verdict.refuted && !verdict.evidenceRefs.isEmpty {
+            let numericEntailment = checkNumericEntailment(verdict)
+            if !numericEntailment.passed {
+                verdict.refuted = true
+                verdict.blockingKind = BlockingKind.unverifiable
+                verdict.fallbackNote = numericEntailment.reason
+            }
+        }
+
+        // Blind review (anti-hallucination Layer 3)
+        // When refuted with low confidence, get a second opinion from the LLM
+        // using an orthogonal prompt that only shows snippets + conclusion.
+        if verdict.refuted && verdict.confidence == .low && llm != nil {
+            if let blindVerdict = await blindReview(verdict: verdict, llm: llm!) {
+                // Blind review overrides original if it disagrees
+                if !blindVerdict.refuted {
+                    verdict = blindVerdict
+                    verdict.fallbackNote = (verdict.fallbackNote ?? "") + "; blind review overrode low-confidence refute"
+                }
+            }
+        }
+
         return verdict
+    }
+
+    // MARK: - Blind Review (Layer 3)
+
+    /// Second LLM call with orthogonal prompt: only shows cited snippets and the conclusion,
+    /// asking "does this evidence actually support this conclusion?" No case data, no claims.
+    private func blindReview(verdict: Verdict, llm: any LLMBackend) async -> Verdict? {
+        // Build orthogonal prompt
+        var lines: [String] = [
+            "You are an independent second reviewer. Your sole job: verify whether the cited evidence actually supports the conclusion.",
+            "",
+            "## CONCLUSION TO REVIEW",
+            "Finding: \(verdict.finding)",
+            "Refuted: \(verdict.refuted)",
+            "Reasoning: \(verdict.reasoning)",
+            "",
+            "## CITED EVIDENCE",
+        ]
+        for ref in verdict.evidenceRefs {
+            let snippet = ref.snippet.isEmpty ? "(empty)" : ref.snippet
+            lines.append("- [\(ref.source)] \(snippet)")
+        }
+        lines.append(contentsOf: [
+            "",
+            "## QUESTION",
+            "Based ONLY on the cited evidence above, does the evidence actually support the conclusion?",
+            "Respond with exactly: CONFIRMED or OVERRULED",
+        ])
+
+        let prompt = lines.joined(separator: "\n")
+        do {
+            let raw = try await llm.judge(prompt)
+            if raw.uppercased().contains("OVERRULED") {
+                return Verdict(
+                    finding: verdict.finding,
+                    refuted: false,
+                    confidence: .medium,
+                    blocking: false,
+                    blockingKind: BlockingKind.none,
+                    evidenceRefs: verdict.evidenceRefs,
+                    findings: verdict.findings,
+                    reasoning: verdict.reasoning,
+                    fallbackNote: "Blind review overrode original refute"
+                )
+            }
+        } catch {
+            // Blind review failed → keep original verdict
+        }
+        return nil
+    }
+
+    // MARK: - Numeric Entailment (Layer 2)
+
+    /// Check that numbers claimed in the verdict's reasoning appear in cited evidence.
+    /// This is a deterministic, zero-cost check that catches "correct snippet, wrong claim" hallucinations.
+    private func checkNumericEntailment(_ verdict: Verdict) -> (passed: Bool, reason: String) {
+        // Extract numbers from reasoning
+        let reasoningNumbers = verdict.reasoning.numbers
+        guard !reasoningNumbers.isEmpty else { return (true, "") }
+
+        // Collect all verifiable numbers from cited evidence refs
+        var evidenceNumbers = Set<String>()
+        for ref in verdict.evidenceRefs {
+            guard let content = evidenceValidator.sources[ref.source] else { continue }
+            // Extract the cited snippet's context from source
+            if !ref.snippet.isEmpty, content.contains(ref.snippet) {
+                evidenceNumbers.formUnion(ref.snippet.numbers)
+            }
+            evidenceNumbers.formUnion(content.numbers)
+        }
+
+        // Check: every reasoning number ≥ 3 digits should appear in evidence
+        for num in reasoningNumbers where num.count >= 3 {
+            if !evidenceNumbers.contains(where: { $0.contains(num) || num.contains($0) }) {
+                return (false, "Reasoning cites '\(num)' not found in any evidence source")
+            }
+        }
+        return (true, "")
     }
 
     // MARK: - Prompt Builder

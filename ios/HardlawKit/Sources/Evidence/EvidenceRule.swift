@@ -71,6 +71,9 @@ public struct EvidenceValidator: Sendable {
 
     public init() {}
 
+    /// Read-only access to source material for numeric entailment checks.
+    public var sources: [String: String] { sourceMaterial }
+
     /// Register a source document.
     public mutating func addSource(_ name: String, _ content: String) {
         sourceMaterial[name] = content
