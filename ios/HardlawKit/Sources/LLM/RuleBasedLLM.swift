@@ -25,11 +25,21 @@ public actor RuleBasedLLM: LLMBackend {
         self.rules = rules
     }
 
-    /// Placeholder rules — replace with domain-specific rules for your use case.
+    /// Default labor-law domain rules for Chinese employment dispute cases.
+    /// Each rule detects evidence-bearing keywords and reports a 'gap' finding
+    /// when the corresponding evidence is missing from the case content.
     public static func defaultRules() -> [Rule] {
         [
-            // Example: detect numbers mentioned as monetary amounts
-            try! Rule(violationName: "amount_mismatch", pattern: #"\d+\.?\d*\s*元"#, severity: "low"),
+            // 劳动关系成立：劳动合同 / 社保 / 公积金 / 参保
+            try! Rule(violationName: "劳动关系成立", pattern: #"劳动合同|社保|公积金|参保"#, severity: "medium"),
+            // 工资标准：工资表 / 应发工资 / 月工资 / 基本工资
+            try! Rule(violationName: "工资标准", pattern: #"工资表|应发工资|月工资|基本工资"#, severity: "medium"),
+            // 欠薪证据：拖欠 / 欠薪 / 未发放 / 行政处罚
+            try! Rule(violationName: "欠薪证据", pattern: #"拖欠|欠薪|未发放|行政处罚"#, severity: "high"),
+            // 混同用工：五建集团公章/财务/人事、持股比例
+            try! Rule(violationName: "混同用工", pattern: #"五建集团.*公章|五建集团.*财务|五建集团.*人事|持股.*%"#, severity: "high"),
+            // 解除程序：被迫解除 / 解除劳动关系 / EMS
+            try! Rule(violationName: "解除程序", pattern: #"被迫解除|解除劳动关系|EMS"#, severity: "high"),
         ]
     }
 
@@ -58,6 +68,7 @@ public actor RuleBasedLLM: LLMBackend {
                     "kind": "gap",
                     "location": "content:\(match.range.location)",
                     "detail": "\(rule.violationName): '\(matchedText)'",
+                    "severity": rule.severity,
                 ])
 
                 // Create evidence ref (snippet from actual content = always verifiable)

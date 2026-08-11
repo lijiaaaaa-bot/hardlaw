@@ -307,20 +307,12 @@ struct CaseWorkbenchView: View {
         }
         for item in caseFile.evidenceItems {
             guard !item.sourceOCRText.isEmpty else { continue }
-            let numbers = extractKeyNumbers(from: item.proofContentState.displayValue ?? "")
+            let numbers = (item.proofContentState.displayValue ?? "").numbers
             var allMatch = true
             for num in numbers {
                 if !item.sourceOCRText.contains(num) { allMatch = false; break }
             }
             if !allMatch { item.proofContentState.stale = true }
-        }
-    }
-
-    func extractKeyNumbers(from text: String) -> [String] {
-        let pattern = try! NSRegularExpression(pattern: #"\d+\.?\d*"#)
-        let range = NSRange(text.startIndex..., in: text)
-        return pattern.matches(in: text, range: range).compactMap {
-            Range($0.range, in: text).map { String(text[$0]) }
         }
     }
 

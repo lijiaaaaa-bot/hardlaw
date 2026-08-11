@@ -152,8 +152,8 @@ final class CaseEvaluationTests: XCTestCase {
             guard let expectedContent = groundTruth[number] else { continue }
 
             // 用确定性规则提取关键数字
-            let ocrNumbers = Set(extractNumbers(from: ocrText))
-            let truthNumbers = Set(extractNumbers(from: expectedContent))
+            let ocrNumbers = Set(ocrText.numbers)
+            let truthNumbers = Set(expectedContent.numbers)
 
             // 检查人工目录引用的关键数字是否在原文中存在
             let missingNumbers = truthNumbers.subtracting(ocrNumbers)
@@ -238,7 +238,7 @@ final class CaseEvaluationTests: XCTestCase {
             guard let catalogContent = makeGroundTruthCatalog()[number] else { continue }
             validator.addSource("证据\(number)", ocrText)
 
-            let catalogNumbers = extractNumbers(from: catalogContent)
+            let catalogNumbers = catalogContent.numbers
             var unverifiedCount = 0
             for num in catalogNumbers {
                 if !ocrText.contains(num) {
@@ -254,14 +254,6 @@ final class CaseEvaluationTests: XCTestCase {
     }
 
     // MARK: - Helpers
-
-    private func extractNumbers(from text: String) -> [String] {
-        let pattern = try! NSRegularExpression(pattern: #"\d+\.?\d*"#)
-        let range = NSRange(text.startIndex..., in: text)
-        return pattern.matches(in: text, range: range).compactMap {
-            Range($0.range, in: text).map { String(text[$0]) }
-        }
-    }
 
     private func extractKeywords(from text: String) -> Set<String> {
         let keywords = ["爨淑纳", "周甜", "杨旭", "工资", "7550", "7450", "7554",
@@ -292,7 +284,7 @@ final class CaseEvaluationTests: XCTestCase {
         var salaryNumbers: Set<String> = []
         for (num, text) in evidenceTexts {
             if text.contains("工资") || text.contains("基数") {
-                salaryNumbers.formUnion(extractNumbers(from: text).filter {
+                salaryNumbers.formUnion(text.numbers.filter {
                     Int($0) ?? 0 > 1000
                 })
             }
