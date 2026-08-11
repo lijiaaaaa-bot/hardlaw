@@ -66,7 +66,7 @@ class TestStatute:
         assert restored.name == original.name
         assert restored.description == original.description
         assert restored.threshold == original.threshold
-        assert restored.required_evidence == original.required_evidence
+        assert [r.evidence for r in restored.required_evidence] == [r.evidence if hasattr(r, 'evidence') else r for r in original.required_evidence]
         assert len(restored.violations) == 1
         assert restored.violations[0].name == "v1"
         assert restored.escalation.max_violations == 5

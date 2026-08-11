@@ -134,7 +134,9 @@ class Court:
             if step.kind == StepKind.CODE:
                 # --- Deterministic code execution ---
                 if step.handler:
-                    ctx = step.handler(ctx)
+                    handler_result = step.handler(ctx)
+                    if handler_result is not None:
+                        ctx = handler_result
                     # Refresh evidence sources — handlers may have modified case data
                     for key, value in ctx.data.items():
                         if isinstance(value, str):
@@ -254,8 +256,9 @@ class Court:
         # Enforce evidence rules
         for statute in statute_list:
             if statute.required_evidence:
+                req_sources = [r.evidence if hasattr(r, 'evidence') else str(r) for r in statute.required_evidence]
                 rule = EvidenceRule(
-                    required_sources=statute.required_evidence,
+                    required_sources=req_sources,
                     min_citations=1,
                 )
                 passed, reason = rule.validate(verdict.evidence_refs)
@@ -320,7 +323,13 @@ class Court:
             lines.append("## APPLICABLE STATUTES")
             for s in statutes:
                 lines.append(f"### {s.name}: {s.description}")
-                lines.append(f"Required evidence: {', '.join(s.required_evidence)}")
+                req_strs = []
+                for r in s.required_evidence:
+                    if hasattr(r, 'evidence'):
+                        req_strs.append(r.evidence)
+                    else:
+                        req_strs.append(str(r))
+                lines.append(f"Required evidence: {', '.join(req_strs)}")
                 if s.violations:
                     lines.append("Violations to check:")
                     for v in s.violations:

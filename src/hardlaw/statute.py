@@ -41,6 +41,59 @@ class EscalationRule:
     escalate_to: str | None = None
 
 
+# ── Evidence Requirement (举证责任分层, mirrors Swift EvidenceRequirement) ──
+
+from enum import Enum as _Enum
+
+class EvidenceHolder(_Enum):
+    WORKER = "worker"
+    EMPLOYER = "employer"
+    THIRD_PARTY = "third_party"
+
+class MissingEvidenceAction(_Enum):
+    FLAG = "flag"
+    PROMPT = "prompt"
+    BLOCK = "block"
+
+@dataclass
+class EvidenceRequirement:
+    """A structured evidence requirement (v2, mirrors Swift)."""
+    evidence: str
+    holder: EvidenceHolder = EvidenceHolder.WORKER
+    on_missing: MissingEvidenceAction = MissingEvidenceAction.BLOCK
+    burden_basis: str | None = None
+    alternatives: list["EvidenceRequirement"] = field(default_factory=list)
+    min_count: int = 1
+
+    def __post_init__(self):
+        # Allow flexible construction from string (backward compat)
+        pass
+
+    @staticmethod
+    def from_string(s: str) -> "EvidenceRequirement":
+        return EvidenceRequirement(evidence=s)
+
+    @staticmethod
+    def from_list(items: list) -> list["EvidenceRequirement"]:
+        """Parse mixed list of strings/dicts/EvidenceRequirement."""
+        result = []
+        for item in items:
+            if isinstance(item, EvidenceRequirement):
+                result.append(item)
+            elif isinstance(item, str):
+                result.append(EvidenceRequirement.from_string(item))
+            elif isinstance(item, dict):
+                result.append(EvidenceRequirement(
+                    evidence=item.get("evidence", ""),
+                    holder=EvidenceHolder(item.get("holder", "worker")),
+                    on_missing=MissingEvidenceAction(item.get("on_missing", "block")),
+                    burden_basis=item.get("burden_basis"),
+                    alternatives=[EvidenceRequirement.from_string(a) for a in item.get("alternatives", [])],
+                    min_count=item.get("min_count", 1),
+                ))
+        return result
+
+
 @dataclass
 class Statute:
     """A named hard rule encoding enforceable constraints on LLM agents.
@@ -49,21 +102,20 @@ class Statute:
     non-programmers can define the rules.
 
     Attributes:
-        name: Unique identifier, e.g. "hate_speech", "gdpr_consent".
-        description: Human-readable explanation of what this statute governs.
-        threshold: Multi-dimensional thresholds, e.g. {"confidence_min": "medium"}.
-        required_evidence: Evidence fields that MUST be cited in any verdict.
+        name: Unique identifier.
+        description: Human-readable explanation.
+        threshold: Multi-dimensional thresholds.
+        required_evidence: Evidence requirements (v2: structured; v1: plain strings).
         violations: Kinds of violations this statute covers.
         escalation: What happens on repeated violations.
         default_to_reject: When the judge is uncertain, default to rejecting.
-            Mirrors Grok Build's "Default to refuted: true if uncertain".
-        blocking: If True, a violation blocks the action entirely (no retry).
+        blocking: If True, a violation blocks the action entirely.
     """
 
     name: str
     description: str = ""
     threshold: dict[str, Any] = field(default_factory=dict)
-    required_evidence: list[str] = field(default_factory=list)
+    required_evidence: list[EvidenceRequirement] = field(default_factory=list)
     violations: list[ViolationType] = field(default_factory=list)
     escalation: EscalationRule = field(default_factory=EscalationRule)
     default_to_reject: bool = True
@@ -110,7 +162,7 @@ class Statute:
             name=data["name"],
             description=data.get("description", ""),
             threshold=data.get("threshold", {}),
-            required_evidence=data.get("required_evidence", []),
+            required_evidence=EvidenceRequirement.from_list(data.get("required_evidence", [])),
             violations=violations,
             escalation=escalation,
             default_to_reject=data.get("default_to_reject", True),
