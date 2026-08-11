@@ -36,8 +36,8 @@ public actor RuleBasedLLM: LLMBackend {
             try! Rule(violationName: "工资标准", pattern: #"工资表|应发工资|月工资|基本工资"#, severity: "medium"),
             // 欠薪证据：拖欠 / 欠薪 / 未发放 / 行政处罚
             try! Rule(violationName: "欠薪证据", pattern: #"拖欠|欠薪|未发放|行政处罚"#, severity: "high"),
-            // 混同用工：五建集团公章/财务/人事、持股比例
-            try! Rule(violationName: "混同用工", pattern: #"五建集团.*公章|五建集团.*财务|五建集团.*人事|持股.*%"#, severity: "high"),
+            // 混同用工：控股/持股比例/关联公司/混同
+            try! Rule(violationName: "混同用工", pattern: #"控股|持股.*%|关联.*公司|混同"#, severity: "high"),
             // 解除程序：被迫解除 / 解除劳动关系 / EMS
             try! Rule(violationName: "解除程序", pattern: #"被迫解除|解除劳动关系|EMS"#, severity: "high"),
         ]

@@ -238,16 +238,19 @@ public struct IntentHandler {
             // 六个月以上不满一年的按一年计算；不满六个月的支付半个月工资。
             let fullYears = Int(floor(years))
             let remainder = years - Double(fullYears)
-            let compensatedYears: Int
-            if remainder >= 0.5 { compensatedYears = fullYears + 1 }
-            else { compensatedYears = fullYears }
-            let amount = wage * Double(compensatedYears)
+            // 每满一年支付一个月工资；六个月以上不满一年按一年计算；
+            // 不满六个月支付半个月工资（如 2 年 4 个月 → 2.5 个月工资）
+            let compensatedYears: Double
+            if remainder >= 0.5 { compensatedYears = Double(fullYears + 1) }
+            else if remainder > 0 { compensatedYears = Double(fullYears) + 0.5 }
+            else { compensatedYears = Double(fullYears) }
+            let amount = wage * compensatedYears
             let detail = years.truncatingRemainder(dividingBy: 1) == 0
-                ? "满 \(fullYears) 年 → \(compensatedYears) 个月工资"
-                : "\(fullYears) 年 + \(String(format: "%.1f", remainder * 12)) 个月 → 按 \(compensatedYears) 个月工资计算"
+                ? "满 \(fullYears) 年 → \(format(compensatedYears)) 个月工资"
+                : "\(fullYears) 年 + \(String(format: "%.1f", remainder * 12)) 个月 → 按 \(format(compensatedYears)) 个月工资计算"
             return IntentResult(
                 action: .none,
-                message: "经济补偿金 = 月工资 \(format(wage)) 元 × \(compensatedYears) 个月 = \(format(amount)) 元（依据《劳动合同法》第47条：\(detail)）",
+                message: "经济补偿金 = 月工资 \(format(wage)) 元 × \(format(compensatedYears)) 个月 = \(format(amount)) 元（依据《劳动合同法》第47条：\(detail)）",
                 success: true
             )
         }
