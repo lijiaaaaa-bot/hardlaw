@@ -70,6 +70,14 @@ targets:
     settings:
       base:
         DEVELOPMENT_TEAM: SP272623JD
+        SWIFT_OBJC_BRIDGING_HEADER: HardlawApp/Services/PaddleOCR-Bridging-Header.h
+        HEADER_SEARCH_PATHS:
+          - $(PROJECT_DIR)/HardlawApp/PaddleOCR/include
+        LIBRARY_SEARCH_PATHS:
+          - $(PROJECT_DIR)/HardlawApp/PaddleOCR/lib
+        "OTHER_LDFLAGS[sdk=iphoneos*]":
+          - -lpaddle_api_light_bundled
+          - -lc++
     resources:
       - path: HardlawApp/LegalKnowledge
         type: folder
