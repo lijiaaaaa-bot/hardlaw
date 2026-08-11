@@ -1,0 +1,72 @@
+{
+  "Qwen2.5-0.5B": {
+    "pass_rate": 0.75,
+    "numbers_hit_rate": 0.75,
+    "avg_latency": 2.8118181228637695,
+    "tests": [
+      {
+        "name": "劳动关系确认",
+        "passed": true,
+        "numbers": "4/4",
+        "latency": 3.0238869190216064,
+        "error": null
+      },
+      {
+        "name": "工资标准核实",
+        "passed": true,
+        "numbers": "3/4",
+        "latency": 2.7085177898406982,
+        "error": null
+      },
+      {
+        "name": "欠薪事实确认",
+        "passed": false,
+        "numbers": "1/3",
+        "latency": 3.065708875656128,
+        "error": null
+      },
+      {
+        "name": "混同用工判定",
+        "passed": true,
+        "numbers": "1/1",
+        "latency": 2.4491589069366455,
+        "error": null
+      }
+    ]
+  },
+  "Qwen2.5-1.5B": {
+    "pass_rate": 0.25,
+    "numbers_hit_rate": 0.25,
+    "avg_latency": 1.8712806701660156,
+    "tests": [
+      {
+        "name": "劳动关系确认",
+        "passed": false,
+        "numbers": "0/4",
+        "latency": 3.2885019779205322,
+        "error": null
+      },
+      {
+        "name": "工资标准核实",
+        "passed": false,
+        "numbers": "1/4",
+        "latency": 2.517225980758667,
+        "error": null
+      },
+      {
+        "name": "欠薪事实确认",
+        "passed": false,
+        "numbers": "1/3",
+        "latency": 0.9077498912811279,
+        "error": null
+      },
+      {
+        "name": "混同用工判定",
+        "passed": true,
+        "numbers": "1/1",
+        "latency": 0.7716448307037354,
+        "error": null
+      }
+    ]
+  }
+}
