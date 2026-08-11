@@ -17,9 +17,16 @@ final class CourtViewModel {
     var statusMessage: String?
     var isProcessing = false
     var goalProgress = ""
-    /// LLM 后端 — 默认 MLX on-device（Metal GPU）。
-    /// 集成测试可注入 MockLLM / RuleBasedLLM，保证离线环境端到端可跑。
-    var llm: any LLMBackend = MLXLLM()
+    /// LLM 后端 — 默认 MLX on-device（Metal GPU）；模型未缓存（首次使用）时
+    /// 自动回退本地规则引擎，MLX 加载/推理失败时由 FailSafeLLM 兜底降级，
+    /// 绝不联网挂起。集成测试可注入 MockLLM / RuleBasedLLM，保证离线可跑。
+    var llm: any LLMBackend = {
+        let fallback = RuleBasedLLM(rules: RuleBasedLLM.defaultRules())
+        if MLXLLM.isAvailable {
+            return FailSafeLLM(primary: MLXLLM(), fallback: fallback)
+        }
+        return fallback
+    }()
 
     init(caseFile: CaseFile) {
         self.caseFile = caseFile
@@ -41,7 +48,7 @@ final class CourtViewModel {
             }
             if let result = await executeIntent(intent) {
                 applyVerdicts(result)
-                statusMessage = summary(from: result)
+                statusMessage = summary(from: result) + fallbackHint
             }
             saveCase()
             isProcessing = false
@@ -98,7 +105,7 @@ final class CourtViewModel {
         }
         g.status = g.isComplete ? .done : .failed
         self.goal = g
-        statusMessage = g.isComplete ? "审查完成" : "部分步骤需要人工处理"
+        statusMessage = (g.isComplete ? "审查完成" : "部分步骤需要人工处理") + fallbackHint
         saveCase()
         isProcessing = false
     }
@@ -207,7 +214,14 @@ final class CourtViewModel {
 
     // MARK: - Court 审理
 
-    /// 组装案件数据 → 本地规则引擎审理（全部本地，零网络）。
+    /// 本地规则引擎兜底提示：MLX 模型未缓存（首次使用）时，
+    /// 附加在最终状态消息之后，确保用户能看到。
+    private var fallbackHint: String {
+        guard llm is RuleBasedLLM else { return "" }
+        return "（首次使用需联网下载AI模型约500MB，当前为本地规则引擎）"
+    }
+
+    /// 组装案件数据 → 本地审理（全部本地，零网络；模型未缓存时走规则引擎）。
     func runCourt(_ procedure: Procedure, statutes: StatuteBook) async -> CaseResult {
         var caseData: [String: JSONValue] = [:]
         for item in caseFile.evidenceItems {
@@ -231,9 +245,20 @@ final class CourtViewModel {
             let cites = results.map { "\($0.chunk.lawID)第\($0.chunk.articleNum)条" }
             caseData["legal_citations"] = .string(cites.joined(separator: "; "))
         }
+        // 首次使用（MLX 模型未缓存）→ 自动使用本地规则引擎，零网络零等待；
+        // 提示用户后续可联网下载 AI 模型获得更精确的审理。
+        if llm is RuleBasedLLM {
+            statusMessage = "首次使用需联网下载AI模型（约500MB），当前使用本地规则引擎"
+        }
         // LLM 后端 — 默认 MLX on-device；测试注入 MockLLM/RuleBasedLLM 保证离线可跑
         let court = Court(statutes: statutes, procedure: procedure, llm: llm)
-        return await court.hear(caseData: caseData)
+        let result = await court.hear(caseData: caseData)
+        // MLX 运行时失败（模型损坏/加载错误）→ FailSafeLLM 已降级为规则引擎，
+        // 向用户说明兜底路径，而不是静默返回空结果。
+        if let failSafe = llm as? FailSafeLLM, await failSafe.fallbackCount > 0 {
+            statusMessage = "AI模型加载失败，已切换至本地规则引擎审理"
+        }
+        return result
     }
 
     // MARK: - Verdict 落盘
@@ -362,17 +387,14 @@ final class CourtViewModel {
             return (try? String(contentsOf: url, encoding: .utf8)) ?? ""
         }
 
-        // Render image/PDF pages to CGImage, then run Vision OCR.
-        // recognizeTextChinese preprocesses each rendered page (grayscale,
-        // contrast stretch, deskew, binarization) before OCR so low-quality
-        // scans and handwritten Chinese annotations are recovered.
-        let collector = VisionEvidenceCollector()
+        // Render image/PDF pages to CGImage, then route OCR through OCRRouter:
+        // PaddleOCR on device (higher Chinese accuracy), Vision fallback on
+        // engine failure or simulator.
         var pages: [String] = []
         for image in renderImages(from: url) {
             // 尽力而为：单页 OCR 失败时跳过该页，不影响其余页面识别
-            if let result = try? await collector.recognizeTextChinese(in: image) {
-                pages.append(result.fullText)
-            }
+            let lines = await OCRRouter.recognize(image)
+            if !lines.isEmpty { pages.append(lines.joined(separator: "\n")) }
         }
         return pages.filter { !$0.isEmpty }.joined(separator: "\n\n")
     }

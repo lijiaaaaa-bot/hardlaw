@@ -14,6 +14,37 @@ public actor MLXLLM: LLMBackend {
     private var container: ModelContainer?
     private let modelID: String
 
+    /// Whether the default Qwen model is already cached locally (no network needed).
+    ///
+    /// Resolves the HuggingFace cache root the same way `HubCache` does
+    /// (`HF_HUB_CACHE` → `HF_HOME/hub` → platform default: `~/.cache/huggingface/hub`
+    /// on non-sandboxed macOS, `<app Caches>/huggingface/hub` on iOS and sandboxed
+    /// macOS). A download counts as complete only once a `snapshots/` ref exists,
+    /// so a half-finished 500MB download never masquerades as "available".
+    ///
+    /// When false, callers should use a network-free fallback backend instead of
+    /// triggering a fresh download on first launch.
+    public static var isAvailable: Bool {
+        let fm = FileManager.default
+        var snapshots: [URL] = [
+            // iOS (simulator/device) & sandboxed macOS: <Caches>/huggingface/hub/models--…
+            URL.cachesDirectory
+                .appendingPathComponent("huggingface/hub/models--mlx-community--Qwen2.5-0.5B-Instruct-4bit/snapshots"),
+        ]
+        #if os(macOS)
+        // macOS (non-sandboxed): ~/.cache/huggingface/hub/models--…
+        snapshots.append(
+            URL(fileURLWithPath: NSHomeDirectory())
+                .appendingPathComponent(".cache/huggingface/hub/models--mlx-community--Qwen2.5-0.5B-Instruct-4bit/snapshots")
+        )
+        #endif
+        return snapshots.contains { dir in
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: dir.path, isDirectory: &isDir), isDir.boolValue else { return false }
+            return !((try? fm.contentsOfDirectory(atPath: dir.path))?.isEmpty ?? true)
+        }
+    }
+
     public init(modelID: String = "mlx-community/Qwen2.5-0.5B-Instruct-4bit") {
         self.modelID = modelID
     }
