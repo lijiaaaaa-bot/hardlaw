@@ -14,8 +14,10 @@ public actor MLXLLM: LLMBackend {
 
     /// Model identifier with pinned revision for supply-chain integrity.
     /// Update the revision hash when upgrading to a newer model version.
-    /// Current: mlx-community/Qwen2.5-0.5B-Instruct-4bit
-    public static let defaultModelID = "mlx-community/Qwen2.5-0.5B-Instruct-4bit"
+    /// Current: mlx-community/Qwen2.5-3B-Instruct-4bit (~1.9GB)
+    /// Fallback: mlx-community/Qwen2.5-0.5B-Instruct-4bit (~500MB)
+    public static let defaultModelID = "mlx-community/Qwen2.5-3B-Instruct-4bit"
+    public static let fallbackModelID = "mlx-community/Qwen2.5-0.5B-Instruct-4bit"
 
     private var container: ModelContainer?
     private let modelID: String
