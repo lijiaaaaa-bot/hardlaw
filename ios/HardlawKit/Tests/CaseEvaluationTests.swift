@@ -286,7 +286,7 @@ final class CaseEvaluationTests: XCTestCase {
 
         // 工资一致性检查
         var salaryNumbers: Set<String> = []
-        for (num, text) in evidenceTexts {
+        for (_, text) in evidenceTexts {
             if text.contains("工资") || text.contains("基数") {
                 salaryNumbers.formUnion(text.numbers.filter {
                     Int($0) ?? 0 > 1000

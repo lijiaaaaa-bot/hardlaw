@@ -39,7 +39,6 @@ final class EvidenceTests: XCTestCase {
         let rule = EvidenceRule()
         XCTAssertEqual(rule.minCitations, 1)
         XCTAssertTrue(rule.mustBeVerifiable)
-        XCTAssertEqual(rule.maxClaimWithoutEvidence, 0)
     }
 
     func testValidateEmptyRefsWithMinCitations() {
@@ -79,30 +78,6 @@ final class EvidenceTests: XCTestCase {
         let (passed, reason) = rule.validate([ref])
         XCTAssertTrue(passed)
         XCTAssertEqual(reason, "")
-    }
-
-    // MARK: - EvidencePacket
-
-    func testEvidencePacketToPromptSection() {
-        let packet = EvidencePacket(
-            objective: "Audit content",
-            artifacts: ["ocr_frame": "some text"],
-            priorGaps: ["gap1"]
-        )
-        let section = packet.toPromptSection()
-        XCTAssertTrue(section.contains("## OBJECTIVE"))
-        XCTAssertTrue(section.contains("Audit content"))
-        XCTAssertTrue(section.contains("## EVIDENCE"))
-        XCTAssertTrue(section.contains("### ocr_frame"))
-        XCTAssertTrue(section.contains("some text"))
-        XCTAssertTrue(section.contains("## PRIOR GAPS"))
-        XCTAssertTrue(section.contains("- gap1"))
-    }
-
-    func testEvidencePacketNoGaps() {
-        let packet = EvidencePacket(objective: "test")
-        let section = packet.toPromptSection()
-        XCTAssertFalse(section.contains("## PRIOR GAPS"))
     }
 
     // MARK: - EvidenceValidator

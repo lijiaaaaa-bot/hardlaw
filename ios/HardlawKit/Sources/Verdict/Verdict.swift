@@ -30,8 +30,6 @@ public struct Verdict: Equatable, Sendable {
     public var findings: [Finding]
     /// Human-readable reasoning.
     public var reasoning: String
-    /// Detailed markdown explanation (unused by Court, kept for parity).
-    public var detailsMd: String
     /// Note explaining why fallback was used (nil = no fallback).
     public var fallbackNote: String?
 
@@ -44,7 +42,6 @@ public struct Verdict: Equatable, Sendable {
         evidenceRefs: [EvidenceRef] = [],
         findings: [Finding] = [],
         reasoning: String = "",
-        detailsMd: String = "",
         fallbackNote: String? = nil
     ) {
         self.finding = finding
@@ -55,7 +52,6 @@ public struct Verdict: Equatable, Sendable {
         self.evidenceRefs = evidenceRefs
         self.findings = findings
         self.reasoning = reasoning
-        self.detailsMd = detailsMd
         self.fallbackNote = fallbackNote
     }
 
@@ -66,9 +62,9 @@ public struct Verdict: Equatable, Sendable {
     }
 
     /// Serialize to plain dict (mirrors Python `to_dict`).
-    /// Note: does NOT include `detailsMd` or `fallbackNote` — matches Python behavior.
+    /// Note: does NOT include `fallbackNote` — matches Python behavior.
     public func toDict() -> [String: Any] {
-        var result: [String: Any] = [
+        let result: [String: Any] = [
             "finding": finding,
             "refuted": refuted,
             "confidence": confidence.rawValue,
@@ -95,7 +91,6 @@ extension Verdict: Codable {
         case finding, refuted, confidence, blocking
         case evidenceRefs = "evidence_refs"
         case findings, reasoning
-        case detailsMd = "details_md"
         case fallbackNote = "fallback_note"
     }
 
@@ -125,7 +120,6 @@ extension Verdict: Codable {
         evidenceRefs = try container.decodeIfPresent([EvidenceRef].self, forKey: .evidenceRefs) ?? []
         findings = try container.decodeIfPresent([Finding].self, forKey: .findings) ?? []
         reasoning = try container.decodeIfPresent(String.self, forKey: .reasoning) ?? ""
-        detailsMd = try container.decodeIfPresent(String.self, forKey: .detailsMd) ?? ""
         fallbackNote = try container.decodeIfPresent(String.self, forKey: .fallbackNote)
     }
 
@@ -138,7 +132,6 @@ extension Verdict: Codable {
         try container.encode(evidenceRefs, forKey: .evidenceRefs)
         try container.encode(findings, forKey: .findings)
         try container.encode(reasoning, forKey: .reasoning)
-        if !detailsMd.isEmpty { try container.encode(detailsMd, forKey: .detailsMd) }
         if let note = fallbackNote { try container.encode(note, forKey: .fallbackNote) }
     }
 }

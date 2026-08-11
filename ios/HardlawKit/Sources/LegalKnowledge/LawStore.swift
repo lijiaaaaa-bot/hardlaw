@@ -16,6 +16,16 @@ import NaturalLanguage
 /// This mirrors the Python jieba+IDF approach.
 public final class LawStore: @unchecked Sendable {
     public init() {}
+
+    /// Shared store: loads the app bundle's `LegalKnowledge/` once on first
+    /// access and caches it. Avoids re-reading the ~7MB laws JSON on every
+    /// command. Load failures are non-fatal — `chunkCount == 0` and callers
+    /// skip legal-citation enrichment (尽力而为).
+    public static let shared: LawStore = {
+        let store = LawStore()
+        try? store.load(from: .main)
+        return store
+    }()
     // MARK: - Properties
 
     /// All searchable chunks loaded from the bundle.

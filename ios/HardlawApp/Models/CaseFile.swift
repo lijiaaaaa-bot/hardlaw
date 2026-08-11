@@ -16,6 +16,10 @@ public final class CaseFile: Identifiable, Hashable {
     public var claims: [ClaimItem]        // 仲裁请求列表
     public var evidenceItems: [EvidenceItem]  // 证据目录
     public var gaps: [GapItem]            // 待核实问题
+    /// 证据版本计数器 — 每次新增证据时递增。
+    /// FieldState.merge(basedOnEvidenceVersion:) 用它记录 AI 建议基于的证据版本，
+    /// 以便在新证据加入后把受影响字段标记为 stale。
+    public var evidenceVersion: Int
 
     /// 派生阶段 — 纯计算，不从 init 赋值
     public var stage: CaseStage {
@@ -47,6 +51,7 @@ public final class CaseFile: Identifiable, Hashable {
         self.claims = claims
         self.evidenceItems = evidenceItems
         self.gaps = []
+        self.evidenceVersion = 0
     }
 }
 

@@ -11,20 +11,15 @@ public struct EvidenceRule: Codable, Sendable {
     public var minCitations: Int
     /// Whether every snippet must be non-blank.
     public var mustBeVerifiable: Bool
-    /// Maximum claims without citing evidence.
-    /// Note: declared but unused in validate() — mirrors Python dead code.
-    public var maxClaimWithoutEvidence: Int
 
     public init(
         requiredSources: [String] = [],
         minCitations: Int = 1,
-        mustBeVerifiable: Bool = true,
-        maxClaimWithoutEvidence: Int = 0
+        mustBeVerifiable: Bool = true
     ) {
         self.requiredSources = requiredSources
         self.minCitations = minCitations
         self.mustBeVerifiable = mustBeVerifiable
-        self.maxClaimWithoutEvidence = maxClaimWithoutEvidence
     }
 
     // Map Python JSON keys
@@ -32,7 +27,6 @@ public struct EvidenceRule: Codable, Sendable {
         case requiredSources = "required_sources"
         case minCitations = "min_citations"
         case mustBeVerifiable = "must_be_verifiable"
-        case maxClaimWithoutEvidence = "max_claim_without_evidence"
     }
 
     /// Validate a list of evidence refs against these rules.
@@ -63,45 +57,6 @@ public struct EvidenceRule: Codable, Sendable {
             }
         }
         return (true, "")
-    }
-}
-
-// MARK: - EvidencePacket
-
-/// A packet of evidence assembled for the judge.
-/// Mirrors Python `hardlaw.evidence.EvidencePacket`.
-public struct EvidencePacket: Sendable {
-    public var objective: String
-    public var artifacts: [String: String]
-    public var priorGaps: [String]
-
-    public init(objective: String, artifacts: [String: String] = [:], priorGaps: [String] = []) {
-        self.objective = objective
-        self.artifacts = artifacts
-        self.priorGaps = priorGaps
-    }
-
-    /// Render as a markdown prompt section (mirrors Python `to_prompt_section`).
-    public func toPromptSection() -> String {
-        var lines: [String] = [
-            "## OBJECTIVE",
-            objective,
-            "",
-            "## EVIDENCE",
-        ]
-        for (kind, content) in artifacts {
-            lines.append("### \(kind)")
-            lines.append(content)
-            lines.append("")
-        }
-        if !priorGaps.isEmpty {
-            lines.append("## PRIOR GAPS")
-            for gap in priorGaps {
-                lines.append("- \(gap)")
-            }
-            lines.append("")
-        }
-        return lines.joined(separator: "\n")
     }
 }
 

@@ -109,7 +109,7 @@ public final class VisionEvidenceCollector: @unchecked Sendable {
         try handler.perform([request])
         if let requestError { throw requestError }
 
-        guard let observations = request.results as? [VNRecognizedTextObservation] else {
+        guard let observations = request.results else {
             return OCRResult(fullText: "", lines: [])
         }
 
@@ -209,7 +209,7 @@ public final class VisionEvidenceCollector: @unchecked Sendable {
         let handler = VNImageRequestHandler(cgImage: original, options: [:])
         try? handler.perform([rectRequest])
 
-        guard let rect = (rectRequest.results as? [VNRectangleObservation])?.first else { return nil }
+        guard let rect = rectRequest.results?.first else { return nil }
         // Quad must dominate the frame — anything smaller risks cropping content.
         guard rect.boundingBox.width >= 0.4, rect.boundingBox.height >= 0.25 else { return nil }
 
@@ -267,7 +267,7 @@ public final class VisionEvidenceCollector: @unchecked Sendable {
         var material: [String: String] = [:]
 
         // Process OCR results
-        let textObs = (textRequest.results as? [VNRecognizedTextObservation]) ?? []
+        let textObs = textRequest.results ?? []
         let sortedText = textObs.sorted { $0.boundingBox.minY > $1.boundingBox.minY }
         var fullText = ""
         for (i, obs) in sortedText.enumerated() {
@@ -290,10 +290,10 @@ public final class VisionEvidenceCollector: @unchecked Sendable {
         material["ocr_frame"] = fullText.trimmingCharacters(in: .newlines)
 
         // Process face results
-        let faceObs = (faceRequest.results as? [VNFaceObservation]) ?? []
+        let faceObs = faceRequest.results ?? []
         if !faceObs.isEmpty {
             var faceSummary = ""
-            for (i, face) in faceObs.enumerated() {
+            for face in faceObs {
                 let loc = String(format: "x:%.2f,y:%.2f,w:%.2f,h:%.2f",
                     face.boundingBox.minX, face.boundingBox.minY,
                     face.boundingBox.width, face.boundingBox.height)
@@ -311,7 +311,7 @@ public final class VisionEvidenceCollector: @unchecked Sendable {
         }
 
         // Process rectangle results
-        let rectObs = (rectRequest.results as? [VNRectangleObservation]) ?? []
+        let rectObs = rectRequest.results ?? []
         if !rectObs.isEmpty {
             var rectSummary = ""
             for (_, rect) in rectObs.enumerated() {

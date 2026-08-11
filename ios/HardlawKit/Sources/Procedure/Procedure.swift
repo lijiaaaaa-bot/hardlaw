@@ -197,6 +197,17 @@ public struct Procedure: Sendable {
         guard map[self.initialStep] != nil else {
             throw ProcedureError.initialStepNotFound(self.initialStep)
         }
+
+        // Validate all transition targets exist in the step map.
+        // A transition pointing at a nonexistent step would silently stall
+        // the state machine at runtime — fail fast at construction instead.
+        for step in steps {
+            for (_, target) in step.transitions {
+                guard map[target] != nil else {
+                    throw ProcedureError.invalidTransition(from: step.name, to: target)
+                }
+            }
+        }
     }
 
     /// Look up a step by name. Throws if not found.
@@ -254,4 +265,6 @@ public struct Procedure: Sendable {
 public enum ProcedureError: Error, Sendable {
     case initialStepNotFound(String)
     case stepNotFound(String)
+    /// A step's transition points to a step name that does not exist.
+    case invalidTransition(from: String, to: String)
 }

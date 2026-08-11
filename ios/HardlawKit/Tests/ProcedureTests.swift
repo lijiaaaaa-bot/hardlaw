@@ -58,6 +58,34 @@ final class ProcedureTests: XCTestCase {
         }
     }
 
+    func testProcedureInvalidTransitionThrows() {
+        XCTAssertThrowsError(try Procedure(
+            name: "bad_transition",
+            steps: [
+                Step(name: "verify", kind: .judgment,
+                     transitions: ["not_refuted": "ghost_step", "refuted": "end"]),
+                Step(name: "end", kind: .code, transitions: [:]),
+            ]
+        )) { error in
+            guard case ProcedureError.invalidTransition(let from, let to) = error else {
+                return XCTFail("expected invalidTransition, got \(error)")
+            }
+            XCTAssertEqual(from, "verify")
+            XCTAssertEqual(to, "ghost_step")
+        }
+    }
+
+    func testProcedureSelfLoopTransitionValid() throws {
+        // A transition that loops back to its own step is valid.
+        let proc = try Procedure(
+            name: "self_loop",
+            steps: [
+                Step(name: "verify", kind: .judgment, transitions: ["refuted": "verify"]),
+            ]
+        )
+        XCTAssertEqual(proc.transition(from: "verify", outcome: "refuted"), "verify")
+    }
+
     func testProcedureGetStep() throws {
         let proc = try Procedure(
             name: "proc",

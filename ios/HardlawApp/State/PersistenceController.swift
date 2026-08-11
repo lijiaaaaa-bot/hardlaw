@@ -6,7 +6,6 @@ import Foundation
 /// Saves each case as a separate .json file in the app's documents directory.
 public final class PersistenceController: @unchecked Sendable {
     public static let shared = PersistenceController()
-    private let queue = DispatchQueue(label: "com.hardlaw.persistence")
 
     private let fileManager = FileManager.default
 
@@ -98,6 +97,7 @@ struct CaseFileDTO: Codable {
     var claims: [ClaimDTO]
     var evidenceItems: [EvidenceDTO]
     var gaps: [GapDTO]
+    var evidenceVersion: Int
     init(from caseFile: CaseFile) {
         self.id = caseFile.id
         self.caseName = caseFile.caseName
@@ -107,6 +107,26 @@ struct CaseFileDTO: Codable {
         self.claims = caseFile.claims.map(ClaimDTO.init)
         self.evidenceItems = caseFile.evidenceItems.map(EvidenceDTO.init)
         self.gaps = caseFile.gaps.map(GapDTO.init)
+        self.evidenceVersion = caseFile.evidenceVersion
+    }
+
+    // Old saved files have no evidenceVersion — default to 0.
+    enum CodingKeys: String, CodingKey {
+        case id, caseName, applicant, respondent, createdAt
+        case claims, evidenceItems, gaps, evidenceVersion
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        caseName = try c.decode(String.self, forKey: .caseName)
+        applicant = try c.decode(String.self, forKey: .applicant)
+        respondent = try c.decode(String.self, forKey: .respondent)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        claims = try c.decode([ClaimDTO].self, forKey: .claims)
+        evidenceItems = try c.decode([EvidenceDTO].self, forKey: .evidenceItems)
+        gaps = try c.decode([GapDTO].self, forKey: .gaps)
+        evidenceVersion = try c.decodeIfPresent(Int.self, forKey: .evidenceVersion) ?? 0
     }
 
     func toCaseFile() -> CaseFile {
@@ -122,6 +142,7 @@ struct CaseFileDTO: Codable {
         cf.claims = claims.map { $0.toClaimItem() }
         cf.evidenceItems = evidenceItems.map { $0.toEvidenceItem() }
         cf.gaps = gaps.map { $0.toGapItem() }
+        cf.evidenceVersion = evidenceVersion
         return cf
     }
 }

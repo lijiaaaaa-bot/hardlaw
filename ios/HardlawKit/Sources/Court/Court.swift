@@ -84,8 +84,12 @@ public actor Court {
         for _ in 0..<maxRounds {
             ctx.roundCount += 1
 
-            guard let step = try? procedure.getStep(currentStep) else {
-                // Step not found — treat as terminal
+            let step: Step
+            do {
+                step = try procedure.getStep(currentStep)
+            } catch {
+                // Step not found — surface the config error instead of
+                // silently treating it as a terminal disposition.
                 return CaseResult(
                     caseId: String(caseId),
                     verdicts: verdicts,
@@ -365,7 +369,6 @@ extension StatuteBook: StatuteBookConvertible {
     public var asStatuteBook: StatuteBook { self }
 }
 
-extension Array: @retroactive Sendable where Element: Sendable {}
 extension Array: StatuteBookConvertible where Element == Statute {
     public var asStatuteBook: StatuteBook { StatuteBook(statutes: self) }
 }
