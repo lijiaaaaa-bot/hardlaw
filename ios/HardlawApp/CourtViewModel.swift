@@ -199,6 +199,13 @@ final class CourtViewModel {
                 return nil
             }
         case .detectGaps:
+            // Fallback path: use deterministic check when LLM is rule-based
+            if llm is RuleBasedLLM {
+                let gaps = IntentParser.findCommonGaps(caseFile)
+                for g in gaps { caseFile.gaps.append(g) }
+                statusMessage = gaps.isEmpty ? "未发现常见证据缺口" : "已检测 \(gaps.count) 个常见证据缺口（规则引擎）"
+                return CaseResult(caseId: "detect-gaps-deterministic", verdicts: [], finalDisposition: .approved, reason: "确定性检查", roundCount: 1)
+            }
             do {
                 let proc = try CourtProcedures.gapDetection()
                 statusMessage = "检测证据缺口…"

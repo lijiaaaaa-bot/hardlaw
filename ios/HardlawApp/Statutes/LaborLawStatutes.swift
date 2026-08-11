@@ -173,7 +173,7 @@ public enum LaborLawStatutes {
     /// 双倍工资差额（《劳动合同法》第82条）
     public static let doubleSalary = Statute(
         name: "双倍工资差额",
-        description: "依据《劳动合同法》第82条：用人单位自用工之日起超过一个月不满一年未订立书面劳动合同的，应向劳动者每月支付二倍的工资（最长11个月）。满一年未签合同的视为已订立无固定期限合同（第82条第2款）。",
+        description: "依据《劳动合同法》第82条：用人单位自用工之日起超过一个月不满一年未订立书面劳动合同的，应向劳动者每月支付二倍的工资（最长11个月）。满一年未签合同的，依据第14条第3款视为已订立无固定期限合同。",
         requiredEvidence: [
             EvidenceRequirement(evidence: "入职日期", holder: .worker, onMissing: .flag),
             EvidenceRequirement(evidence: "书面劳动合同签订日期", holder: .worker, onMissing: .flag,
@@ -233,7 +233,8 @@ public enum LaborLawStatutes {
         description: "依据《劳动合同法》第87条：用人单位违反本法规定解除或终止劳动合同的，应依照第47条经济补偿标准的二倍支付赔偿金（2N）。注意：第87条赔偿金与第47条经济补偿金不能兼得。",
         requiredEvidence: [
             EvidenceRequirement(evidence: "解除/终止劳动合同通知书", holder: .worker, onMissing: .block),
-            EvidenceRequirement(evidence: "解除理由不成立的证据", holder: .worker, onMissing: .flag),
+            EvidenceRequirement(evidence: "解除理由不成立的证据", holder: .employer, onMissing: .flag,
+                burdenBasis: "《劳动争议调解仲裁法》第6条：解除合法性举证责任在用人单位"),
             EvidenceRequirement(evidence: "工资银行流水", holder: .worker, onMissing: .flag),
         ],
         violations: [
@@ -251,7 +252,8 @@ public enum LaborLawStatutes {
         description: "依据《劳动合同法》第40条：用人单位提前三十日书面通知或额外支付一个月工资（代通知金）后可解除劳动合同。适用情形：医疗期满不能从事原工作、不胜任经培训仍不胜任、客观情况重大变化致合同无法履行。",
         requiredEvidence: [
             EvidenceRequirement(evidence: "解除通知书", holder: .worker, onMissing: .block),
-            EvidenceRequirement(evidence: "未提前30日通知的证据", holder: .worker, onMissing: .flag),
+            EvidenceRequirement(evidence: "未提前30日通知的证据", holder: .employer, onMissing: .flag,
+                burdenBasis: "用人单位主张已提前通知的，由其承担举证责任"),
             EvidenceRequirement(evidence: "月工资标准", holder: .worker, onMissing: .flag),
         ],
         violations: [

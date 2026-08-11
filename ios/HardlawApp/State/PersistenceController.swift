@@ -99,6 +99,7 @@ struct CaseFileDTO: Codable {
     var claims: [ClaimDTO]
     var evidenceItems: [EvidenceDTO]
     var gaps: [GapDTO]
+    var facts: [String]
     var evidenceVersion: Int
     init(from caseFile: CaseFile) {
         self.id = caseFile.id
@@ -109,13 +110,14 @@ struct CaseFileDTO: Codable {
         self.claims = caseFile.claims.map(ClaimDTO.init)
         self.evidenceItems = caseFile.evidenceItems.map(EvidenceDTO.init)
         self.gaps = caseFile.gaps.map(GapDTO.init)
+        self.facts = caseFile.facts
         self.evidenceVersion = caseFile.evidenceVersion
     }
 
-    // Old saved files have no evidenceVersion — default to 0.
+    // Old saved files have no facts/evidenceVersion — default to []/0.
     enum CodingKeys: String, CodingKey {
         case id, caseName, applicant, respondent, createdAt
-        case claims, evidenceItems, gaps, evidenceVersion
+        case claims, evidenceItems, gaps, facts, evidenceVersion
     }
 
     init(from decoder: Decoder) throws {
@@ -128,6 +130,7 @@ struct CaseFileDTO: Codable {
         claims = try c.decode([ClaimDTO].self, forKey: .claims)
         evidenceItems = try c.decode([EvidenceDTO].self, forKey: .evidenceItems)
         gaps = try c.decode([GapDTO].self, forKey: .gaps)
+        facts = try c.decodeIfPresent([String].self, forKey: .facts) ?? []
         evidenceVersion = try c.decodeIfPresent(Int.self, forKey: .evidenceVersion) ?? 0
     }
 
@@ -144,6 +147,7 @@ struct CaseFileDTO: Codable {
         cf.claims = claims.map { $0.toClaimItem() }
         cf.evidenceItems = evidenceItems.map { $0.toEvidenceItem() }
         cf.gaps = gaps.map { $0.toGapItem() }
+        cf.facts = facts
         cf.evidenceVersion = evidenceVersion
         return cf
     }

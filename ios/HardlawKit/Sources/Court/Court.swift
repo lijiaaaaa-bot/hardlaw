@@ -233,27 +233,34 @@ public actor Court {
                 let matched = allOptions.filter { citedSources.contains($0) }
                 if matched.count >= req.minCount { continue } // Satisfied
 
-                // Unsatisfied — route based on holder
+                // Unsatisfied — route based on holder + onMissing action
                 switch req.holder {
-                case .worker:
-                    // Worker-held evidence missing → fail-closed
+                case .worker where req.onMissing == .block:
+                    // Worker-held evidence missing, block action → fail-closed
                     verdict.refuted = true
                     verdict.blocking = true
                     verdict.blockingKind = BlockingKind.contradiction
                     verdict.fallbackNote = "Missing worker-held evidence: \(req.evidence)"
+                case .worker:
+                    // Worker-held but flagged as non-blocking → notice only
+                    verdict.findings.append(Finding(
+                        kind: "gap", location: "\(statute.name)/\(req.evidence)",
+                        detail: "缺少：\(req.evidence)"))
                 case .employer:
-                    // Employer-held evidence missing → flag only, don't block worker
-                    let notice = Finding(
+                    // Employer-held evidence missing → burden notice, don't block worker
+                    verdict.findings.append(Finding(
                         kind: "notice",
                         location: "\(statute.name)/\(req.evidence)",
                         detail: "该证据由用人单位掌握管理\(req.burdenBasis.map { "（\($0)）" } ?? "")，应由其提供。不作为申请人证据缺口。"
-                    )
-                    verdict.findings.append(notice)
+                    ))
                 case .thirdParty:
-                    // Third-party evidence → mark pending, prompt retry
+                    // Third-party evidence → add gap finding + prompt for retry
+                    verdict.findings.append(Finding(
+                        kind: "gap", location: "\(statute.name)/\(req.evidence)",
+                        detail: "需调取第三方证据：\(req.evidence)\(req.burdenBasis.map { "（\($0)）" } ?? "")"))
                     verdict.fallbackNote = "第三方证据待调取: \(req.evidence)"
                 }
-                // Only .worker blocks the verdict; others add notice and continue
+                // Only .block action stops the verdict; flag/prompt add notices and continue
                 if verdict.blocking { break }
             }
             if verdict.blocking { break }
@@ -281,11 +288,12 @@ public actor Court {
         }
 
         // Blind review (anti-hallucination Layer 3)
-        // When refuted with low confidence, get a second opinion from the LLM
-        // using an orthogonal prompt that only shows snippets + conclusion.
-        if verdict.refuted && verdict.confidence == .low && llm != nil {
+        // Only triggered when the refute is from the LLM's own low-confidence judgment,
+        // NOT from deterministic gates (evidence missing, hallucination, numeric entailment).
+        // Deterministic gate refutes always set blockingKind to contradiction.
+        let llmRefuted = verdict.refuted && verdict.blockingKind != BlockingKind.contradiction
+        if llmRefuted && verdict.confidence == .low && llm != nil {
             if let blindVerdict = await blindReview(verdict: verdict, llm: llm!) {
-                // Blind review overrides original if it disagrees
                 if !blindVerdict.refuted {
                     verdict = blindVerdict
                     verdict.fallbackNote = (verdict.fallbackNote ?? "") + "; blind review overrode low-confidence refute"
@@ -365,11 +373,20 @@ public actor Court {
             evidenceNumbers.formUnion(content.numbers)
         }
 
-        // Check: every reasoning number ≥ 3 digits should appear in evidence
-        for num in reasoningNumbers where num.count >= 3 {
-            if !evidenceNumbers.contains(where: { $0.contains(num) || num.contains($0) }) {
-                return (false, "Reasoning cites '\(num)' not found in any evidence source")
+        // Check: majority of reasoning numbers (≥3 digits) must appear in evidence.
+        // Uses a relaxed threshold to allow formula-derived results (sums, multiples)
+        // that won't appear verbatim in source documents.
+        let significantNums = reasoningNumbers.filter { $0.count >= 3 }
+        guard !significantNums.isEmpty else { return (true, "") }
+        let found = significantNums.filter { num in
+            evidenceNumbers.contains(where: { $0.contains(num) || num.contains($0) })
+        }
+        let hitRate = Double(found.count) / Double(significantNums.count)
+        if hitRate < 0.5 {
+            let missing = significantNums.filter { num in
+                !evidenceNumbers.contains(where: { $0.contains(num) || num.contains($0) })
             }
+            return (false, "Majority of cited numbers not found in evidence: \(missing.prefix(3).joined(separator: ", "))")
         }
         return (true, "")
     }
@@ -422,7 +439,7 @@ public actor Court {
             lines.append("## APPLICABLE STATUTES")
             for s in statutes {
                 lines.append("### \(s.name): \(s.description)")
-                lines.append("Required evidence: \(s.requiredEvidence.joined(separator: ", "))")
+                lines.append("Required evidence: \(s.requiredEvidence.map(\.evidence).joined(separator: ", "))")
                 if !s.violations.isEmpty {
                     lines.append("Violations to check:")
                     for v in s.violations {

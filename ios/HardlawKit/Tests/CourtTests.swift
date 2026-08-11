@@ -9,7 +9,7 @@ final class CourtTests: XCTestCase {
     // MARK: - Fixtures
 
     func makeStatute(name: String = "test_statute",
-                     requiredEvidence: [String] = ["content"],
+                     requiredEvidence: [EvidenceRequirement] = [EvidenceRequirement("content")],
                      defaultToReject: Bool = true) -> Statute {
         Statute(
             name: name,

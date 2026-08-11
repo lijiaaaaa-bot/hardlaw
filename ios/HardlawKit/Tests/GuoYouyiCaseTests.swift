@@ -98,7 +98,7 @@ final class GuoYouyiCaseTests: XCTestCase {
         let court = Court(statutes: [], procedure: procedure, llm: nil)
         let result = await court.hear(caseData: [
             "monthly_wage": .string("7550"),
-            "work_years": .string("5"),
+            "work_years": .string("6"),
         ])
         XCTAssertEqual(result.finalDisposition, .terminalStep)
         XCTAssertEqual(result.roundCount, 1)
