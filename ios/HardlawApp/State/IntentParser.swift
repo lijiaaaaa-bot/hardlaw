@@ -185,11 +185,7 @@ public struct IntentHandler {
             )
 
         case .computeSeverance:
-            return IntentResult(
-                action: .none,
-                message: "经济补偿金计算：需确认月工资标准和工作年限",
-                success: true
-            )
+            return computeSeverance(caseFile)
 
         case .verifyCitations:
             return IntentResult(
@@ -226,6 +222,155 @@ public struct IntentHandler {
                 success: false
             )
         }
+    }
+
+    // MARK: - 经济补偿金计算（《劳动合同法》第47条）
+
+    /// 经济补偿金 = 月工资标准 × 工作年限。
+    /// 依据《劳动合同法》第47条：每满一年支付一个月工资；
+    /// 六个月以上不满一年的按一年计算，不满六个月的支付半个月工资。
+    private static func computeSeverance(_ caseFile: CaseFile) -> IntentResult {
+        let wage = extractMonthlyWage(from: caseFile)
+        let years = extractWorkYears(from: caseFile)
+
+        if let wage, let years {
+            let amount = wage * years
+            let roundingNote = years.truncatingRemainder(dividingBy: 1) == 0
+                ? "每满一年支付一个月工资"
+                : "每满一年支付一个月工资；六个月以上不满一年按一年计算，不满六个月支付半个月工资"
+            return IntentResult(
+                action: .none,
+                message: "经济补偿金 ≈ 月工资 \(format(wage)) 元 × 工作年限 \(format(years)) 年 = \(format(amount)) 元（依据《劳动合同法》第47条：\(roundingNote)）",
+                success: true
+            )
+        }
+        if let wage {
+            return IntentResult(
+                action: .none,
+                message: "经济补偿金计算：已提取月工资 \(format(wage)) 元，但未确认工作年限。请补充劳动合同/参保证明，或输入如「工作 3 年」。",
+                success: false
+            )
+        }
+        if let years {
+            return IntentResult(
+                action: .none,
+                message: "经济补偿金计算：已确认工作年限 \(format(years)) 年，但未从证据中找到月工资标准。请补充工资流水/工资表，或输入如「月工资 8000 元」。",
+                success: false
+            )
+        }
+        return IntentResult(
+            action: .none,
+            message: "经济补偿金计算：未从证据中找到月工资标准和工作年限。请补充工资流水与劳动合同，或直接输入如「月工资 8000 元，工作 3 年」。",
+            success: false
+        )
+    }
+
+    /// 从案件证据/请求中提取月工资标准（元/月）。
+    /// 优先级：①「月工资 X 元 / X 元/月」等明确表述（含银行流水 OCR）→
+    /// ② 工资类证据的证明内容中的唯一金额。
+    /// 流水类 OCR 明细只在出现明确月工资模式时使用，避免把单笔金额误当工资标准。
+    private static func extractMonthlyWage(from caseFile: CaseFile) -> Double? {
+        // ① 明确月工资表述
+        let explicitPatterns = [
+            #"(?:月工资|月薪|工资标准|月收入|每月|工资)[^\d]{0,6}(\d+(?:\.\d+)?)\s*元"#,
+            #"(\d+(?:\.\d+)?)\s*(?:元)?\s*(?:/|／)\s*月"#,
+        ]
+        for text in allTexts(from: caseFile) {
+            for pattern in explicitPatterns {
+                if let value = captureNumber(in: text, pattern: pattern) {
+                    return value
+                }
+            }
+        }
+        // ② 工资类证据中的唯一金额（如工资表/劳动合同的证明内容）
+        for item in caseFile.evidenceItems
+        where item.name.contains("工资") || item.name.contains("流水") || item.name.contains("合同") {
+            if let value = singleNumber(in: item.proofContentState.displayValue ?? "") {
+                return value
+            }
+        }
+        return nil
+    }
+
+    /// 从案件证据/请求中提取工作年限（年）。
+    /// 优先级：①「工作 N 年 / 工龄 N 年」等明确表述 → ② 同一文本中的入职与解除日期之差。
+    /// 日期差仅在文本含劳动关系关键词时计算，避免把银行流水的日期跨度误当工作年限。
+    private static func extractWorkYears(from caseFile: CaseFile) -> Double? {
+        for text in allTexts(from: caseFile) {
+            if let value = captureNumber(in: text, pattern: #"(?:工作|工龄|任职|入职|服务)[^\d]{0,6}(\d+(?:\.\d+)?)\s*年"#) {
+                return value
+            }
+        }
+        for text in allTexts(from: caseFile)
+        where text.contains("入职") || text.contains("工作") || text.contains("解除") || text.contains("离职") {
+            if let years = yearsBetweenDates(in: text) {
+                return years
+            }
+        }
+        return nil
+    }
+
+    /// 解析文本中「20xx年x月」日期对，返回起止时间差（年）。
+    private static func yearsBetweenDates(in text: String) -> Double? {
+        let pattern = #"20\d{2}\s*年\s*\d{1,2}\s*月"#
+        // 正则来自编译期常量，防御性 try?，正常不会失败
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let nsRange = NSRange(text.startIndex..., in: text)
+        var months: [Int] = []
+        for match in regex.matches(in: text, range: nsRange) {
+            guard let range = Range(match.range, in: text) else { continue }
+            let numbers = String(text[range])
+                .split(whereSeparator: { !$0.isNumber })
+                .compactMap { Int($0) }
+            guard numbers.count >= 2 else { continue }
+            months.append(numbers[0] * 12 + numbers[1])
+        }
+        guard let first = months.min(), let last = months.max(), last > first else { return nil }
+        return Double(last - first) / 12.0
+    }
+
+    /// 提取文本中唯一的「X元」金额；出现多个金额时视为无法确认，返回 nil。
+    private static func singleNumber(in text: String) -> Double? {
+        let pattern = #"(\d+(?:\.\d+)?)\s*元"#
+        // 正则来自编译期常量，防御性 try?，正常不会失败
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let nsRange = NSRange(text.startIndex..., in: text)
+        let matches = regex.matches(in: text, range: nsRange)
+        guard matches.count == 1,
+              let range = Range(matches[0].range(at: 1), in: text),
+              let value = Double(text[range]) else { return nil }
+        return value
+    }
+
+    /// 提取文本中第一个捕获组数字。
+    private static func captureNumber(in text: String, pattern: String) -> Double? {
+        // 正则来自编译期常量，防御性 try?，正常不会失败
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let nsRange = NSRange(text.startIndex..., in: text)
+        guard let match = regex.firstMatch(in: text, range: nsRange),
+              let range = Range(match.range(at: 1), in: text),
+              let value = Double(text[range]) else { return nil }
+        return value
+    }
+
+    /// 参与计算的全部文本：案由、仲裁请求、证据名称/证明内容/OCR 原文。
+    private static func allTexts(from caseFile: CaseFile) -> [String] {
+        var texts: [String] = [caseFile.caseName]
+        for item in caseFile.evidenceItems {
+            texts.append(item.name)
+            texts.append(item.proofContentState.displayValue ?? "")
+            texts.append(item.sourceOCRText)
+        }
+        texts.append(contentsOf: caseFile.claims.map(\.content))
+        return texts
+    }
+
+    /// 数字展示：整数不带小数位，其余保留两位。
+    private static func format(_ value: Double) -> String {
+        if value.truncatingRemainder(dividingBy: 1) == 0 {
+            return String(Int(value))
+        }
+        return String(format: "%.2f", value)
     }
 
     // MARK: - Deterministic checks

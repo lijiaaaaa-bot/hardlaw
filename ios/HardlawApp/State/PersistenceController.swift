@@ -9,10 +9,16 @@ public final class PersistenceController: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.hardlaw.persistence")
 
     private let fileManager = FileManager.default
-    private var storageURL: URL {
+
+    /// 存储目录（Documents/Cases）。目录创建失败时抛出，由调用方展示给用户。
+    private func storageDirectory() throws -> URL {
         let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
         let dir = docs.appendingPathComponent("Cases", isDirectory: true)
-        try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        do {
+            try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        } catch {
+            throw PersistenceError.directoryCreationFailed(error)
+        }
         return dir
     }
 
@@ -22,7 +28,7 @@ public final class PersistenceController: @unchecked Sendable {
     public func save(_ caseFile: CaseFile) throws {
         let dto = CaseFileDTO(from: caseFile)
         let data = try JSONEncoder().encode(dto)
-        let url = storageURL.appendingPathComponent("\(caseFile.id.uuidString).json")
+        let url = try storageDirectory().appendingPathComponent("\(caseFile.id.uuidString).json")
         try data.write(to: url)
     }
 
@@ -31,7 +37,7 @@ public final class PersistenceController: @unchecked Sendable {
     @MainActor
     public func loadAll() throws -> [CaseFile] {
         let urls = try fileManager.contentsOfDirectory(
-            at: storageURL, includingPropertiesForKeys: nil
+            at: try storageDirectory(), includingPropertiesForKeys: nil
         ).filter { $0.pathExtension == "json" }
 
         return try urls.compactMap { url in
@@ -43,7 +49,7 @@ public final class PersistenceController: @unchecked Sendable {
 
     @MainActor
     public func load(id: UUID) throws -> CaseFile? {
-        let url = storageURL.appendingPathComponent("\(id.uuidString).json")
+        let url = try storageDirectory().appendingPathComponent("\(id.uuidString).json")
         guard fileManager.fileExists(atPath: url.path) else { return nil }
         let data = try Data(contentsOf: url)
         let dto = try JSONDecoder().decode(CaseFileDTO.self, from: data)
@@ -54,15 +60,29 @@ public final class PersistenceController: @unchecked Sendable {
 
     @MainActor
     public func delete(id: UUID) throws {
-        let url = storageURL.appendingPathComponent("\(id.uuidString).json")
+        let url = try storageDirectory().appendingPathComponent("\(id.uuidString).json")
         if fileManager.fileExists(atPath: url.path) {
             try fileManager.removeItem(at: url)
         }
     }
 
     public func deleteAll() throws {
-        let urls = try fileManager.contentsOfDirectory(at: storageURL, includingPropertiesForKeys: nil)
+        let urls = try fileManager.contentsOfDirectory(at: try storageDirectory(), includingPropertiesForKeys: nil)
         for url in urls { try fileManager.removeItem(at: url) }
+    }
+}
+
+// MARK: - 错误类型
+
+/// 持久化错误。实现 LocalizedError，向用户展示中文可读描述。
+enum PersistenceError: Error, LocalizedError {
+    case directoryCreationFailed(Error)
+
+    var errorDescription: String? {
+        switch self {
+        case .directoryCreationFailed(let underlying):
+            return "无法创建存储目录：\(underlying.localizedDescription)"
+        }
     }
 }
 

@@ -16,6 +16,8 @@ struct CaseWorkbenchView: View {
     @State private var expandedNeedsYou = false
     @State private var statusMessage: String?
     @State private var showFileImporter = false
+    @State private var shareURL: URL?
+    @State private var showShareSheet = false
     @State private var goal: Goal?
     @State private var goalProgress: String = ""
 
@@ -23,6 +25,10 @@ struct CaseWorkbenchView: View {
         ScrollView {
             VStack(spacing: 0) {
                 CaseHeader(caseFile: caseFile)
+
+                if let statusMessage {
+                    StatusBanner(text: statusMessage) { self.statusMessage = nil }
+                }
 
                 if let goal {
                     GoalProgressView(goal: goal)
@@ -57,10 +63,8 @@ struct CaseWorkbenchView: View {
                     Button { addNewEvidence() } label: {
                         Label("添加证据", systemImage: "plus.rectangle")
                     }
-                    if let url = ExcelExport.exportCatalog(caseFile) {
-                        ShareLink(item: url) {
-                            Label("导出目录", systemImage: "square.and.arrow.up")
-                        }
+                    Button { exportCatalog() } label: {
+                        Label("导出目录", systemImage: "square.and.arrow.up")
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
@@ -94,7 +98,11 @@ struct CaseWorkbenchView: View {
                     statusMessage = failed == 0
                         ? "已完成 \(urls.count) 个文件的识别"
                         : "\(urls.count - failed) 个文件识别成功，\(failed) 个未识别"
-                    try? PersistenceController.shared.save(caseFile)
+                    do {
+                        try PersistenceController.shared.save(caseFile)
+                    } catch {
+                        statusMessage = "保存失败：\(error.localizedDescription)"
+                    }
                     isProcessing = false
                 }
             }
@@ -102,6 +110,15 @@ struct CaseWorkbenchView: View {
         .sheet(isPresented: $showEvidenceEditor) {
             if let item = editingItem {
                 EvidenceEditorView(item: item)
+            }
+        }
+        .sheet(isPresented: $showShareSheet) {
+            if let url = shareURL {
+                ShareLink(item: url) {
+                    Label("分享导出的证据目录", systemImage: "square.and.arrow.up")
+                }
+                .padding(24)
+                .presentationDetents([.medium])
             }
         }
         .onAppear { verifySnippets() }
@@ -159,8 +176,22 @@ struct CaseWorkbenchView: View {
                 applyVerdicts(result)
                 statusMessage = summary(from: result)
             }
-            try? PersistenceController.shared.save(caseFile)
+            do {
+                try PersistenceController.shared.save(caseFile)
+            } catch {
+                statusMessage = "保存失败：\(error.localizedDescription)"
+            }
             isProcessing = false
+        }
+    }
+
+    /// 导出证据目录 CSV；失败时给出用户可见反馈。
+    func exportCatalog() {
+        if let url = ExcelExport.exportCatalog(caseFile) {
+            shareURL = url
+            showShareSheet = true
+        } else {
+            statusMessage = "导出失败：无法生成目录文件，请重试"
         }
     }
 
@@ -184,7 +215,11 @@ struct CaseWorkbenchView: View {
             g.status = g.isComplete ? .done : .failed
             self.goal = g
             statusMessage = g.isComplete ? "审查完成" : "部分步骤需要人工处理"
-            try? PersistenceController.shared.save(caseFile)
+            do {
+                try PersistenceController.shared.save(caseFile)
+            } catch {
+                statusMessage = "保存失败：\(error.localizedDescription)"
+            }
             isProcessing = false
         }
     }
@@ -206,17 +241,33 @@ struct CaseWorkbenchView: View {
     func executeGoalStep(_ step: GoalStep) async -> CaseResult? {
         switch step.kind {
         case .generateCatalog:
-            guard caseFile.evidenceItems.count > 0, let proc = try? CourtProcedures.catalogGeneration(itemCount: caseFile.evidenceItems.count) else { return nil }
-            return await runCourt(proc, statutes: StatuteBook())
+            guard caseFile.evidenceItems.count > 0 else { return nil }
+            do {
+                let proc = try CourtProcedures.catalogGeneration(itemCount: caseFile.evidenceItems.count)
+                return await runCourt(proc, statutes: StatuteBook())
+            } catch {
+                statusMessage = "目录生成失败：\(error.localizedDescription)"
+                return nil
+            }
         case .verifyCitations:
             verifySnippets()
             return nil
         case .detectGaps:
-            guard let proc = try? CourtProcedures.gapDetection() else { return nil }
-            return await runCourt(proc, statutes: LaborLawStatutes.gapDetectionBook)
+            do {
+                let proc = try CourtProcedures.gapDetection()
+                return await runCourt(proc, statutes: LaborLawStatutes.gapDetectionBook)
+            } catch {
+                statusMessage = "缺口检测失败：\(error.localizedDescription)"
+                return nil
+            }
         case .checkConsistency:
-            guard let proc = try? CourtProcedures.salaryConsistency() else { return nil }
-            return await runCourt(proc, statutes: StatuteBook())
+            do {
+                let proc = try CourtProcedures.salaryConsistency()
+                return await runCourt(proc, statutes: StatuteBook())
+            } catch {
+                statusMessage = "工资检查失败：\(error.localizedDescription)"
+                return nil
+            }
         }
     }
 
@@ -224,22 +275,50 @@ struct CaseWorkbenchView: View {
         switch intent.kind {
         case .generateCatalog:
             let count = caseFile.evidenceItems.count
-            guard count > 0, let proc = try? CourtProcedures.catalogGeneration(itemCount: count) else { return nil }
-            statusMessage = "生成 \(count) 项目录…"
-            return await runCourt(proc, statutes: StatuteBook())
+            guard count > 0 else {
+                statusMessage = "尚无证据，无法生成目录"
+                return nil
+            }
+            do {
+                let proc = try CourtProcedures.catalogGeneration(itemCount: count)
+                statusMessage = "生成 \(count) 项目录…"
+                return await runCourt(proc, statutes: StatuteBook())
+            } catch {
+                statusMessage = "目录生成失败：\(error.localizedDescription)"
+                return nil
+            }
         case .fullReview:
             let count = caseFile.evidenceItems.count
-            guard count > 0, let proc = try? CourtProcedures.fullReview(itemCount: count) else { return nil }
-            statusMessage = "全面复核中…"
-            return await runCourt(proc, statutes: StatuteBook())
+            guard count > 0 else {
+                statusMessage = "尚无证据，无法全面复核"
+                return nil
+            }
+            do {
+                let proc = try CourtProcedures.fullReview(itemCount: count)
+                statusMessage = "全面复核中…"
+                return await runCourt(proc, statutes: StatuteBook())
+            } catch {
+                statusMessage = "全面复核失败：\(error.localizedDescription)"
+                return nil
+            }
         case .detectGaps:
-            guard let proc = try? CourtProcedures.gapDetection() else { return nil }
-            statusMessage = "检测证据缺口…"
-            return await runCourt(proc, statutes: LaborLawStatutes.gapDetectionBook)
+            do {
+                let proc = try CourtProcedures.gapDetection()
+                statusMessage = "检测证据缺口…"
+                return await runCourt(proc, statutes: LaborLawStatutes.gapDetectionBook)
+            } catch {
+                statusMessage = "缺口检测失败：\(error.localizedDescription)"
+                return nil
+            }
         case .checkConsistency:
-            guard let proc = try? CourtProcedures.salaryConsistency() else { return nil }
-            statusMessage = "工资一致性检查…"
-            return await runCourt(proc, statutes: StatuteBook())
+            do {
+                let proc = try CourtProcedures.salaryConsistency()
+                statusMessage = "工资一致性检查…"
+                return await runCourt(proc, statutes: StatuteBook())
+            } catch {
+                statusMessage = "工资检查失败：\(error.localizedDescription)"
+                return nil
+            }
         case .verifyCitations:
             verifySnippets()
             statusMessage = "引用验证完成"
@@ -265,6 +344,7 @@ struct CaseWorkbenchView: View {
             caseData["claim_\(claim.claimNumber)"] = .string(claim.content)
         }
         // LegalKnowledge citations as prompt context
+        // 尽力而为：法条库缺失/加载失败时跳过引用增强，不影响本地分析
         let store = LawStore()
         try? store.load(from: .main)
         if store.chunkCount > 0 {
@@ -325,6 +405,7 @@ struct CaseWorkbenchView: View {
         defer { url.stopAccessingSecurityScopedResource() }
 
         // Plain text files need no OCR
+        // 尽力而为：读取失败视为无文本，由导入流程标记该文件未识别
         let ext = url.pathExtension.lowercased()
         if ["txt", "text", "md", "csv"].contains(ext) {
             return (try? String(contentsOf: url, encoding: .utf8)) ?? ""
@@ -337,6 +418,7 @@ struct CaseWorkbenchView: View {
         let collector = VisionEvidenceCollector()
         var pages: [String] = []
         for image in renderImages(from: url) {
+            // 尽力而为：单页 OCR 失败时跳过该页，不影响其余页面识别
             if let result = try? await collector.recognizeTextChinese(in: image) {
                 pages.append(result.fullText)
             }
@@ -698,6 +780,35 @@ struct ActivitySection: View {
 }
 
 // MARK: - Shared components
+
+/// 状态提示条：展示 statusMessage（操作结果 / 错误反馈），可手动关闭。
+struct StatusBanner: View {
+    let text: String
+    var onDismiss: (() -> Void)?
+
+    var body: some View {
+        let isError = text.contains("失败") || text.contains("错误")
+        HStack(spacing: 8) {
+            Image(systemName: isError ? "exclamationmark.triangle.fill" : "info.circle.fill")
+                .foregroundStyle(isError ? .red : .blue)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.primary)
+                .lineLimit(3)
+            Spacer()
+            if let onDismiss {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.quaternary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background((isError ? Color.red : Color.blue).opacity(0.08))
+    }
+}
 
 struct SectionHeader: View {
     let title: String

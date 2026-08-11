@@ -1,4 +1,5 @@
 import Foundation
+import os
 import TabularData
 import UniformTypeIdentifiers
 
@@ -13,6 +14,7 @@ import UniformTypeIdentifiers
 /// report keeps its exact row layout; the UTF-8 BOM is prepended manually since
 /// `CSVWritingOptions` has no BOM flag.
 public enum ExcelExport {
+    private static let logger = Logger(subsystem: "com.hardlaw.app", category: "ExcelExport")
 
     // MARK: - 目录导出
 
@@ -142,6 +144,8 @@ public enum ExcelExport {
             try data.write(to: url, options: .atomic)
             return url
         } catch {
+            // 签名保持返回 URL?：失败时记录具体原因，由 UI 层根据 nil 展示用户可见反馈
+            Self.logger.error("CSV 导出失败（\(fileName)）：\(error.localizedDescription, privacy: .public)")
             return nil
         }
     }

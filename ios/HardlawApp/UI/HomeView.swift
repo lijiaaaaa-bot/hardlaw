@@ -6,11 +6,16 @@ public struct HomeView: View {
     @State private var showNewCase = false
     @State private var cases: [CaseFile] = []
     @State private var selectedCase: CaseFile?
+    @State private var statusMessage: String?
 
     public var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 TrustBanner()
+
+                if let statusMessage {
+                    StatusBanner(text: statusMessage) { self.statusMessage = nil }
+                }
 
                 if cases.isEmpty {
                     EmptyCaseView(onNewCase: { showNewCase = true })
@@ -23,7 +28,11 @@ public struct HomeView: View {
             .sheet(isPresented: $showNewCase) {
                 CaseIntakeView { newCase in
                     cases.append(newCase)
-                    try? PersistenceController.shared.save(newCase)
+                    do {
+                        try PersistenceController.shared.save(newCase)
+                    } catch {
+                        statusMessage = "保存失败：\(error.localizedDescription)"
+                    }
                     selectedCase = newCase
                     showNewCase = false
                 }
@@ -31,13 +40,19 @@ public struct HomeView: View {
             .navigationDestination(item: $selectedCase) { caseFile in
                 CaseWorkbenchView(caseFile: caseFile)
                     .onDisappear {
-                        try? PersistenceController.shared.save(caseFile)
+                        do {
+                            try PersistenceController.shared.save(caseFile)
+                        } catch {
+                            statusMessage = "保存失败：\(error.localizedDescription)"
+                        }
                     }
             }
         }
         .onAppear {
-            if let saved = try? PersistenceController.shared.loadAll() {
-                cases = saved
+            do {
+                cases = try PersistenceController.shared.loadAll()
+            } catch {
+                statusMessage = "加载失败：\(error.localizedDescription)"
             }
         }
     }
