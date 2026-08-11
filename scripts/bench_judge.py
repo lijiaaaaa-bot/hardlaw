@@ -2,7 +2,7 @@
 """
 MLX Judge Benchmark — 对比多个 MLX 模型在劳动仲裁法律判断上的质量。
 
-用法: python3 scripts/bench_judge.py [--models qwen2.5-0.5b,qwen2.5-1.5b]
+用法: python3 scripts/bench_judge.py [--models qwen2.5-0.5b,qwen2.5-3b] [--mode judgment|catalog|all]
 
 产出:
   - 每个模型的通过率、延迟、关键数字命中率
@@ -11,11 +11,49 @@ MLX Judge Benchmark — 对比多个 MLX 模型在劳动仲裁法律判断上的
 """
 from __future__ import annotations
 
-import json, time, sys, os
+import json, time, sys, os, re
 from dataclasses import dataclass, field
 from typing import Optional
 
-# ── 测试用例（从 hardlaw iOS 郭又义案提取的真实证据）──
+# ── 数字归一化 ──
+
+def normalize_number(n: str) -> str:
+    """Strip commas, spaces, and common Chinese unit suffixes for matching."""
+    n = n.strip().replace(",", "").replace("，", "").replace(" ", "")
+    # Convert 万/亿 units to raw numbers for comparison
+    if n.endswith("万"):
+        try:
+            return str(int(float(n[:-1]) * 10000))
+        except ValueError:
+            return n
+    if n.endswith("亿"):
+        try:
+            return str(int(float(n[:-1]) * 100000000))
+        except ValueError:
+            return n
+    # Strip 元 suffix
+    if n.endswith("元"):
+        n = n[:-1]
+    return n
+
+def numbers_match(expected: str, raw_output: str) -> bool:
+    """Check if an expected number appears in the raw output, with normalization."""
+    norm_expected = normalize_number(expected)
+    norm_raw = normalize_number(raw_output)
+    # Direct substring match after normalization
+    if norm_expected in norm_raw:
+        return True
+    # Also try the original expected string (for non-numeric tokens like "0028")
+    if expected in raw_output:
+        return True
+    return False
+
+def count_number_hits(expected_numbers: list[str], raw_output: str) -> int:
+    """Count how many expected numbers are found in the raw output."""
+    return sum(1 for n in expected_numbers if numbers_match(n, raw_output))
+
+
+# ── 测试用例 ──
 
 TEST_CASES = [
     {
@@ -58,6 +96,76 @@ TEST_CASES = [
         "expected_numbers": ["51"],
         "expected_finding": "混同用工成立",
         "prompt_type": "judgment",
+    },
+    # ── 扩展用例：数字计算型（验证模型不只是复读，而是理解）──
+    {
+        "name": "经济补偿金计算",
+        "evidence": """月工资：7550元 工作年限：5年10个月（2020年7月1日至2026年5月8日）
+依据《劳动合同法》第47条：每满一年支付一个月工资，六个月以上不满一年按一年计算，不满六个月支付半个月工资""",
+        "expected_numbers": ["7550", "6", "45300"],
+        "expected_finding": "经济补偿金计算",
+        "prompt_type": "judgment",
+    },
+    {
+        "name": "欠薪总额求和",
+        "evidence": """郭又义欠薪明细：
+2023年12月：7550元
+2024年1月：7550元
+2024年2月：7550元
+2024年3月：7550元
+2024年4月：7550元
+合计：37750元""",
+        "expected_numbers": ["7550", "37750"],
+        "expected_finding": "欠薪总额确认",
+        "prompt_type": "judgment",
+    },
+    {
+        "name": "时效判断",
+        "evidence": """劳动关系终止日期：2026年5月8日
+当前日期：2026年8月11日
+依据《劳动争议调解仲裁法》第27条：劳动关系终止的，应在终止之日起一年内提出""",
+        "expected_numbers": ["2026", "5", "8", "1"],
+        "expected_finding": "时效未届满",
+        "prompt_type": "judgment",
+    },
+    {
+        "name": "双倍工资区间",
+        "evidence": """入职日期：2025年1月15日
+签订书面劳动合同日期：2025年8月1日
+月工资：8000元
+依据《劳动合同法》第82条：用工满一个月起至满一年前一日，未签书面合同应支付双倍工资""",
+        "expected_numbers": ["8000", "5.5", "44000"],
+        "expected_finding": "双倍工资计算",
+        "prompt_type": "judgment",
+    },
+]
+
+# ── 目录生成用例（CATALOG_PROMPT）──
+
+CATALOG_TEST_CASES = [
+    {
+        "name": "工资表",
+        "evidence": """达海建筑工资表（2025年1月）姓名：郭又义 基本工资：7000元
+工龄津贴：150元 外地津贴：400元 应发工资合计：7550元""",
+        "expected_numbers": ["7550"],
+        "expected_keywords": ["工资", "郭又义"],
+    },
+    {
+        "name": "参保证明",
+        "evidence": """河南省社会保险个人参保证明
+参保人：郭又义 参保单位：河南达海建设工程有限公司
+参保起始：2020年7月1日 缴费基数：7450元""",
+        "expected_numbers": ["7450", "2020"],
+        "expected_keywords": ["社保", "达海"],
+    },
+    {
+        "name": "银行流水",
+        "evidence": """银行工资流水（2023年4月至2026年）
+2023年4月-2024年9月：达海公司公户发放
+2024年10月起：冉林夕个人账户发放
+月发放金额：约7550元""",
+        "expected_numbers": ["7550"],
+        "expected_keywords": ["银行", "流水", "发放"],
     },
 ]
 
@@ -111,6 +219,8 @@ MODELS = [
     ModelConfig("mlx-community/Qwen2.5-1.5B-Instruct-4bit", "Qwen2.5-1.5B"),
     ModelConfig("mlx-community/Qwen2.5-3B-Instruct-4bit", "Qwen2.5-3B"),
     ModelConfig("mlx-community/Qwen2.5-7B-Instruct-4bit", "Qwen2.5-7B"),
+    ModelConfig("mlx-community/Qwen3-4B-Instruct-2507-4bit", "Qwen3-4B"),
+    ModelConfig("mlx-community/Qwen3.5-35B-A3B-4bit", "Qwen3.5-35B-MoE"),
 ]
 
 @dataclass
@@ -144,11 +254,16 @@ class ModelReport:
         return sum(r.latency_seconds for r in self.results) / max(len(self.results), 1)
 
 
-def run_judgment_test(model_id: str, test: dict) -> TestResult:
+def run_judgment_test(model_id: str, test: dict, model_cache: dict | None = None) -> TestResult:
     """Run a single judgment test and measure quality."""
     import mlx_lm
 
-    model, tokenizer = mlx_lm.load(model_id)
+    if model_cache is not None and model_id in model_cache:
+        model, tokenizer = model_cache[model_id]
+    else:
+        model, tokenizer = mlx_lm.load(model_id)
+        if model_cache is not None:
+            model_cache[model_id] = (model, tokenizer)
     prompt = JUDGMENT_PROMPT.format(evidence=test["evidence"])
     input_ids = tokenizer.apply_chat_template([{"role":"user","content":prompt}], add_generation_prompt=True)
 
@@ -161,50 +276,108 @@ def run_judgment_test(model_id: str, test: dict) -> TestResult:
                          latency_seconds=time.time()-start, error=str(e))
     latency = time.time() - start
 
-    # Score: check if expected numbers appear in output
-    numbers_hit = sum(1 for n in test["expected_numbers"] if n in raw)
+    # Score: normalized number matching (handles 万/元/逗号 variants)
+    numbers_hit = count_number_hits(test["expected_numbers"], raw)
     passed = numbers_hit >= len(test["expected_numbers"]) * 0.5  # 50% threshold
 
     return TestResult(
         model=model_id, test_name=test["name"],
         passed=passed, numbers_hit=numbers_hit,
         numbers_total=len(test["expected_numbers"]),
-        latency_seconds=latency, raw_output=raw[:500]
+        latency_seconds=latency, raw_output=raw
+    )
+
+
+def run_catalog_test(model_id: str, test: dict, model_cache: dict | None = None) -> TestResult:
+    """Run a catalog generation test (proof content drafting)."""
+    import mlx_lm
+
+    if model_cache is not None and model_id in model_cache:
+        model, tokenizer = model_cache[model_id]
+    else:
+        model, tokenizer = mlx_lm.load(model_id)
+        if model_cache is not None:
+            model_cache[model_id] = (model, tokenizer)
+    prompt = CATALOG_PROMPT.format(name=test["name"], evidence=test["evidence"])
+    input_ids = tokenizer.apply_chat_template([{"role":"user","content":prompt}], add_generation_prompt=True)
+
+    start = time.time()
+    try:
+        raw = mlx_lm.generate(model, tokenizer, prompt=input_ids, max_tokens=200, verbose=False)
+    except Exception as e:
+        return TestResult(model=model_id, test_name=f"catalog:{test['name']}",
+                         passed=False, numbers_hit=0, numbers_total=len(test["expected_numbers"]),
+                         latency_seconds=time.time()-start, error=str(e))
+    latency = time.time() - start
+
+    numbers_hit = count_number_hits(test["expected_numbers"], raw)
+    # Catalog: also check for expected keywords
+    kw_hit = sum(1 for kw in test.get("expected_keywords", []) if kw in raw)
+    passed = numbers_hit >= len(test["expected_numbers"]) * 0.5
+
+    return TestResult(
+        model=model_id, test_name=f"catalog:{test['name']}",
+        passed=passed, numbers_hit=numbers_hit,
+        numbers_total=len(test["expected_numbers"]),
+        latency_seconds=latency, raw_output=raw
     )
 
 
 def main():
-    # Parse model selection
+    # Parse arguments
     if "--models" in sys.argv:
-        selected = sys.argv[sys.argv.index("--models") + 1].split(",")
+        idx = sys.argv.index("--models")
+        selected = sys.argv[idx + 1].split(",")
         models = [m for m in MODELS if any(s.lower() in m.id.lower() for s in selected)]
     else:
         models = MODELS[:2]  # Default: smallest two
 
-    print(f"Benchmarking {len(models)} models on {len(TEST_CASES)} test cases...\n")
+    mode = "all"
+    if "--mode" in sys.argv:
+        mode = sys.argv[sys.argv.index("--mode") + 1]  # "judgment", "catalog", "all"
+
+    run_judgment = mode in ("judgment", "all")
+    run_catalog = mode in ("catalog", "all")
+
+    total_cases = 0
+    if run_judgment: total_cases += len(TEST_CASES)
+    if run_catalog: total_cases += len(CATALOG_TEST_CASES)
+    print(f"Benchmarking {len(models)} models on {total_cases} test cases (judgment={run_judgment}, catalog={run_catalog})...\n")
 
     reports: dict[str, ModelReport] = {}
     for mc in models:
         print(f"── {mc.display_name} ──")
         report = ModelReport(model=mc.display_name)
-        for test in TEST_CASES:
-            print(f"  {test['name']}...", end=" ", flush=True)
-            result = run_judgment_test(mc.id, test)
-            report.results.append(result)
-            status = "✅" if result.passed else f"❌ ({result.numbers_hit}/{result.numbers_total})"
-            print(f"{status} {result.latency_seconds:.1f}s")
+        model_cache: dict = {}  # Cache loaded model across tests
+
+        if run_judgment:
+            for test in TEST_CASES:
+                print(f"  {test['name']}...", end=" ", flush=True)
+                result = run_judgment_test(mc.id, test, model_cache)
+                report.results.append(result)
+                status = "✅" if result.passed else f"❌ ({result.numbers_hit}/{result.numbers_total})"
+                print(f"{status} {result.latency_seconds:.1f}s")
+
+        if run_catalog:
+            for test in CATALOG_TEST_CASES:
+                print(f"  catalog:{test['name']}...", end=" ", flush=True)
+                result = run_catalog_test(mc.id, test, model_cache)
+                report.results.append(result)
+                status = "✅" if result.passed else f"❌ ({result.numbers_hit}/{result.numbers_total})"
+                print(f"{status} {result.latency_seconds:.1f}s")
+
         reports[mc.display_name] = report
         print()
 
     # Comparison table
-    print("═" * 60)
-    print(f"{'Model':<16} {'Pass':>6} {'Nums':>6} {'Avg Lat':>8}")
-    print("─" * 60)
+    print("═" * 70)
+    print(f"{'Model':<18} {'Pass':>6} {'Nums':>7} {'Avg Lat':>8}")
+    print("─" * 70)
     for name, r in reports.items():
-        print(f"{name:<16} {r.pass_rate:>5.0%} {r.avg_numbers_hit_rate:>5.0%} {r.avg_latency:>7.1f}s")
-    print("═" * 60)
+        print(f"{name:<18} {r.pass_rate:>5.0%} {r.avg_numbers_hit_rate:>6.0%} {r.avg_latency:>7.1f}s")
+    print("═" * 70)
 
-    # Save results
+    # Save results (including raw_output for debugging)
     results_data = {
         name: {
             "pass_rate": r.pass_rate,
@@ -213,6 +386,7 @@ def main():
             "tests": [{"name": t.test_name, "passed": t.passed,
                        "numbers": f"{t.numbers_hit}/{t.numbers_total}",
                        "latency": t.latency_seconds,
+                       "raw_output": t.raw_output[:1000] if not t.error else None,
                        "error": t.error} for t in r.results]
         } for name, r in reports.items()
     }

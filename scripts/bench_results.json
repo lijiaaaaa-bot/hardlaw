@@ -1,70 +1,71 @@
 {
   "Qwen2.5-0.5B": {
     "pass_rate": 0.75,
-    "numbers_hit_rate": 0.75,
-    "avg_latency": 2.8118181228637695,
+    "numbers_hit_rate": 0.7083333333333334,
+    "avg_latency": 0.26743897795677185,
     "tests": [
       {
         "name": "劳动关系确认",
         "passed": true,
         "numbers": "4/4",
-        "latency": 3.0238869190216064,
+        "latency": 0.35181188583374023,
+        "raw_output": "```json\n{\n  \"finding\": \"该证据支持了郭又义在2025年7月1日至2028年6月30日期间的工作岗位是预算员。\",\n  \"refuted\": true,\n  \"confidence\": \"medium\",\n  \"cited_numbers\": [\"7450元\"],\n  \"reasoning\": \"根据河南省社会保险个人参保证明，郭又义的参保单位是河南达海建设工程有限公司，起始日期是2020年7月1日，缴费基数是7450元。\"\n}\n```",
         "error": null
       },
       {
         "name": "工资标准核实",
         "passed": true,
         "numbers": "3/4",
-        "latency": 2.7085177898406982,
+        "latency": 0.26601290702819824,
+        "raw_output": "```json\n{\n  \"finding\": \"该证据支持该劳动者（郭又义）的工资计算方式符合劳动法规定，即基本工资、工龄津贴、外地津贴应分别计算，不应合并计算。\",\n  \"refuted\": true,\n  \"confidence\": \"medium\",\n  \"cited_numbers\": [\"7000元\", \"150元\", \"400元\"],\n  \"reasoning\": \"根据劳动法规定，工资计算应分开计算，不应合并计算。\"\n}\n```",
         "error": null
       },
       {
         "name": "欠薪事实确认",
         "passed": false,
         "numbers": "1/3",
-        "latency": 3.065708875656128,
+        "latency": 0.2876279354095459,
+        "raw_output": "```json\n{\n  \"finding\": \"未发放工资统计表显示，郭又义未发放金额合计93059.85元，这表明达海公司存在未发放工资的情况，因此可以认定达海公司存在未发放工资的行为。\",\n  \"refuted\": true,\n  \"confidence\": \"medium\",\n  \"cited_numbers\": [\"93059.85元\"],\n  \"reasoning\": \"根据未发放工资统计表，达海公司存在未发放工资的情况，可以认定达海公司存在未发放工资的行为。\"\n}\n```",
         "error": null
       },
       {
         "name": "混同用工判定",
         "passed": true,
         "numbers": "1/1",
-        "latency": 2.4491589069366455,
-        "error": null
-      }
-    ]
-  },
-  "Qwen2.5-1.5B": {
-    "pass_rate": 0.25,
-    "numbers_hit_rate": 0.25,
-    "avg_latency": 1.8712806701660156,
-    "tests": [
-      {
-        "name": "劳动关系确认",
-        "passed": false,
-        "numbers": "0/4",
-        "latency": 3.2885019779205322,
+        "latency": 0.23586201667785645,
+        "raw_output": "```json\n{\n  \"finding\": \"达海公司工商登记：股东河南五建建设集团有限公司 持股51%\",\n  \"refuted\": true,\n  \"confidence\": \"medium\",\n  \"cited_numbers\": [\"51%\"],\n  \"reasoning\": \"达海公司工商登记中明确载明了股东持股比例，达海公司是根据五建集团的持股比例进行登记的。\"\n}\n```",
         "error": null
       },
       {
-        "name": "工资标准核实",
-        "passed": false,
-        "numbers": "1/4",
-        "latency": 2.517225980758667,
+        "name": "经济补偿金计算",
+        "passed": true,
+        "numbers": "2/3",
+        "latency": 0.24727916717529297,
+        "raw_output": "```json\n{\n  \"finding\": \"该证据支持了《劳动合同法》第47条的规定，即每满一年支付一个月工资，六个月以上不满一年按一年计算，不满六个月支付半个月工资。\",\n  \"refuted\": true,\n  \"confidence\": \"medium\",\n  \"cited_numbers\": [\"7550元\", \"5年10个月（2020年7月1日至2026年5月8日）\"]\n}\n```",
         "error": null
       },
       {
-        "name": "欠薪事实确认",
+        "name": "欠薪总额求和",
+        "passed": true,
+        "numbers": "2/2",
+        "latency": 0.3052539825439453,
+        "raw_output": "```json\n{\n  \"finding\": \"该证据支持的结论是：郭又义欠薪的总金额为37750元。\",\n  \"refuted\": true,\n  \"confidence\": \"medium\",\n  \"cited_numbers\": [\"7550元\"],\n  \"reasoning\": \"根据郭又义欠薪明细，2023年12月、2024年1月、2024年2月、2024年3月、2024年4月的欠薪明细，可以计算出郭又义欠薪的总金额。\"\n}\n```",
+        "error": null
+      },
+      {
+        "name": "时效判断",
+        "passed": true,
+        "numbers": "3/4",
+        "latency": 0.22203588485717773,
+        "raw_output": "```json\n{\n  \"finding\": \"劳动关系终止的，应在终止之日起一年内提出\",\n  \"refuted\": true,\n  \"confidence\": \"medium\",\n  \"cited_numbers\": [\"2026年5月8日\"],\n  \"reasoning\": \"根据《劳动争议调解仲裁法》第27条，劳动关系终止的，应在终止之日起一年内提出\"\n}\n```",
+        "error": null
+      },
+      {
+        "name": "双倍工资区间",
         "passed": false,
         "numbers": "1/3",
-        "latency": 0.9077498912811279,
-        "error": null
-      },
-      {
-        "name": "混同用工判定",
-        "passed": true,
-        "numbers": "1/1",
-        "latency": 0.7716448307037354,
+        "latency": 0.22362804412841797,
+        "raw_output": "```json\n{\n  \"finding\": \"未签书面合同应支付双倍工资\",\n  \"refuted\": true,\n  \"confidence\": \"medium\",\n  \"cited_numbers\": [\"8000元\"],\n  \"reasoning\": \"根据《劳动合同法》第82条，用工满一个月起至满一年前一日，未签书面合同应支付双倍工资。\"\n}\n```",
         "error": null
       }
     ]
