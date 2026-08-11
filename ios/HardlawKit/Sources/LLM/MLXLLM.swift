@@ -14,17 +14,27 @@ public actor MLXLLM: LLMBackend {
     private var container: ModelContainer?
     private let modelID: String
 
-    /// Whether the default Qwen model is already cached locally (no network needed).
+    /// Whether MLX can be used right now: the model is cached locally (no
+    /// network needed) and the runtime is safe to use.
     ///
-    /// Resolves the HuggingFace cache root the same way `HubCache` does
-    /// (`HF_HUB_CACHE` → `HF_HOME/hub` → platform default: `~/.cache/huggingface/hub`
-    /// on non-sandboxed macOS, `<app Caches>/huggingface/hub` on iOS and sandboxed
-    /// macOS). A download counts as complete only once a `snapshots/` ref exists,
-    /// so a half-finished 500MB download never masquerades as "available".
+    /// Always false on the iOS Simulator: MLX model loading there hard-aborts
+    /// the process with a libc++ hardening assertion (`basic_string` from a
+    /// null pointer) that no Swift error handling can catch, so callers should
+    /// stick to the local rule engine in the simulator.
+    ///
+    /// On device, resolves the HuggingFace cache root the same way `HubCache`
+    /// does (`HF_HUB_CACHE` → `HF_HOME/hub` → platform default:
+    /// `~/.cache/huggingface/hub` on non-sandboxed macOS, `<app Caches>/huggingface/hub`
+    /// on iOS and sandboxed macOS). A download counts as complete only once a
+    /// `snapshots/` ref exists, so a half-finished 500MB download never
+    /// masquerades as "available".
     ///
     /// When false, callers should use a network-free fallback backend instead of
     /// triggering a fresh download on first launch.
     public static var isAvailable: Bool {
+        #if targetEnvironment(simulator)
+        return false
+        #else
         let fm = FileManager.default
         var snapshots: [URL] = [
             // iOS (simulator/device) & sandboxed macOS: <Caches>/huggingface/hub/models--…
@@ -43,6 +53,7 @@ public actor MLXLLM: LLMBackend {
             guard fm.fileExists(atPath: dir.path, isDirectory: &isDir), isDir.boolValue else { return false }
             return !((try? fm.contentsOfDirectory(atPath: dir.path))?.isEmpty ?? true)
         }
+        #endif
     }
 
     public init(modelID: String = "mlx-community/Qwen2.5-0.5B-Instruct-4bit") {
