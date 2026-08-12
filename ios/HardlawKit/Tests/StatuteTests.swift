@@ -47,7 +47,7 @@ final class StatuteTests: XCTestCase {
             name: "statute1",
             description: "A test statute",
             threshold: ["confidence_min": .string("medium")],
-            requiredEvidence: ["ocr_frame"],
+            requiredEvidence: [EvidenceRequirement(evidence: "ocr_frame")],
             violations: [v],
             escalation: rule,
             defaultToReject: true,
@@ -56,7 +56,7 @@ final class StatuteTests: XCTestCase {
         let d = s.toDict()
         XCTAssertEqual(d["name"] as? String, "statute1")
         XCTAssertEqual(d["description"] as? String, "A test statute")
-        XCTAssertEqual(d["required_evidence"] as? [String], ["ocr_frame"])
+        XCTAssertEqual(s.requiredEvidence.map(\.evidence), ["ocr_frame"])
         XCTAssertEqual(d["default_to_reject"] as? Bool, true)
 
         let violations = d["violations"] as? [[String: Any]] ?? []
@@ -109,7 +109,7 @@ final class StatuteTests: XCTestCase {
         let s = Statute.fromDict(data)
         XCTAssertEqual(s.name, "full_statute")
         XCTAssertEqual(s.threshold["confidence_min"], .string("high"))
-        XCTAssertEqual(s.requiredEvidence, ["ocr_frame", "vision_analysis"])
+        XCTAssertEqual(s.requiredEvidence.map(\.evidence), ["ocr_frame", "vision_analysis"])
         XCTAssertEqual(s.violations.count, 1)
         XCTAssertEqual(s.violations[0].name, "hate_speech")
         XCTAssertEqual(s.violations[0].severity, .critical)
@@ -125,7 +125,7 @@ final class StatuteTests: XCTestCase {
             name: "roundtrip",
             description: "Round-trip test",
             threshold: ["key": .number(0.5)],
-            requiredEvidence: ["source1"],
+            requiredEvidence: [EvidenceRequirement(evidence: "source1")],
             violations: [v],
             escalation: EscalationRule(maxViolations: 7, action: .notify),
             defaultToReject: false,

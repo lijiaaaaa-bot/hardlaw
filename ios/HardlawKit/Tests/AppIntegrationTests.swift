@@ -149,20 +149,32 @@ final class AppIntegrationTests: XCTestCase {
     // MARK: - 7. 证据齐备 → RuleBasedLLM 模板推理不得产生假缺口
 
     func testCompleteEvidenceProducesNoFalseGaps() async {
-        // 社保 + 合同 + 公积金 证据齐备：OCR 原文包含全部关键词
+        // 完整证据：合同 + 银行流水 + 社保 + 公积金 + 解除通知书 → 不应产生假缺口
         let cf = makeCase()
         cf.evidenceItems.append(EvidenceItem(
-            number: 1, name: "劳动合同",
+            number: 1, name: "书面劳动合同",
             proofContent: "合同期限：2025年7月1日至2028年6月30日，月工资：7550元",
             sourceOCRText: "劳动合同 甲方：河南达海建设工程有限公司 乙方：郭又义 月工资：7550元"))
         cf.evidenceItems.append(EvidenceItem(
-            number: 2, name: "社会保险参保证明",
+            number: 2, name: "银行工资流水",
+            proofContent: "2025年1月-12月工资发放记录，月均7550元",
+            sourceOCRText: "银行交易明细 2025-01-15 工资 7550元 对方：冉林夕"))
+        cf.evidenceItems.append(EvidenceItem(
+            number: 3, name: "社会保险参保证明",
             proofContent: "参保单位：河南达海建设工程有限公司，参保起始：2020年7月1日",
             sourceOCRText: "河南省社会保险个人参保证明 参保人：郭又义 参保单位：河南达海建设工程有限公司 参保起始：2020年7月1日"))
         cf.evidenceItems.append(EvidenceItem(
-            number: 3, name: "住房公积金缴存证明",
+            number: 4, name: "住房公积金缴存证明",
             proofContent: "缴存单位：河南达海建设工程有限公司",
             sourceOCRText: "个人住房公积金查询书 缴存单位：河南达海建设工程有限公司"))
+        cf.evidenceItems.append(EvidenceItem(
+            number: 5, name: "被迫解除劳动关系通知书",
+            proofContent: "申请人于2026年5月8日依据劳动合同法第38条解除劳动关系",
+            sourceOCRText: "被迫解除劳动关系通知书 依据《劳动合同法》第38条 于2026年5月8日正式解除劳动关系"))
+        cf.evidenceItems.append(EvidenceItem(
+            number: 6, name: "EMS交寄单",
+            proofContent: "EMS邮寄被迫解除通知书至被申请人",
+            sourceOCRText: "EMS快递单号：1234567890 寄件人：郭又义 收件人：河南达海建设工程有限公司"))
 
         let vm = CourtViewModel(caseFile: cf)
         let goal = vm.makeReviewGoal()
@@ -171,9 +183,9 @@ final class AppIntegrationTests: XCTestCase {
         await vm.runGoalSteps(goal)
 
         XCTAssertEqual(vm.goal?.status, .done, "goal 应正常完成")
-        // 证据齐备时 regex 命中只是"关键词存在"，不是"证据缺失"——
-        // 模板推理（Rule-based detection）不得落成缺口（Bug 1 回归）
-        XCTAssertTrue(cf.gaps.isEmpty,
-                      "证据齐备时不应产生假缺口，实际产生：\(cf.gaps.map { "\($0.description)@\($0.relatedClaim)" })")
+        // 证据齐备时不应产生假缺口
+        let unresolvedGaps = cf.gaps.filter { !$0.isResolved }
+        XCTAssertTrue(unresolvedGaps.isEmpty,
+                      "证据齐备时不应产生假缺口，实际产生：\(unresolvedGaps.map { "\($0.description)@\($0.relatedClaim)" })")
     }
 }

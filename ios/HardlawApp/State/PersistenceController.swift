@@ -41,11 +41,19 @@ public final class PersistenceController: @unchecked Sendable {
             at: try storageDirectory(), includingPropertiesForKeys: nil
         ).filter { $0.pathExtension == "json" }
 
-        return try urls.compactMap { url in
-            let data = try Data(contentsOf: url)
-            let dto = try JSONDecoder().decode(CaseFileDTO.self, from: data)
-            return dto.toCaseFile()
+        // 逐文件容错：单个案件文件损坏（截断/写一半）不应拖垮整个列表加载。
+        // 损坏文件跳过并记录，其余案件照常返回。
+        var loaded: [CaseFile] = []
+        for url in urls {
+            do {
+                let data = try Data(contentsOf: url)
+                let dto = try JSONDecoder().decode(CaseFileDTO.self, from: data)
+                loaded.append(dto.toCaseFile())
+            } catch {
+                NSLog("Hardlaw: 跳过损坏的案件文件 %@：%@", url.lastPathComponent, error.localizedDescription)
+            }
         }
+        return loaded
     }
 
     @MainActor
@@ -164,12 +172,14 @@ struct EvidenceDTO: Codable {
     var isOriginal: Bool; var pageCount: Int
     var proofContentState: FieldStateDTO; var proofPurposeState: FieldStateDTO
     var sourceOCRText: String; var humanReviewed: Bool
+    var batchID: UUID?; var sourceFile: String?
     init(from e: EvidenceItem) {
         id = e.id; group = e.group; number = e.number; name = e.name
         isOriginal = e.isOriginal; pageCount = e.pageCount
         proofContentState = FieldStateDTO(from: e.proofContentState)
         proofPurposeState = FieldStateDTO(from: e.proofPurposeState)
         sourceOCRText = e.sourceOCRText; humanReviewed = e.humanReviewed
+        batchID = e.batchID; sourceFile = e.sourceFile
     }
     func toEvidenceItem() -> EvidenceItem {
         let e = EvidenceItem(group: group, number: number, name: name,
@@ -177,6 +187,7 @@ struct EvidenceDTO: Codable {
                              sourceOCRText: sourceOCRText)
         e.id = id; e.proofContentState = proofContentState.toFieldState()
         e.proofPurposeState = proofPurposeState.toFieldState(); e.humanReviewed = humanReviewed
+        e.batchID = batchID; e.sourceFile = sourceFile
         return e
     }
 }

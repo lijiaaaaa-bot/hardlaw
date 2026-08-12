@@ -293,7 +293,7 @@ public actor Court {
         // Deterministic gate refutes always set blockingKind to contradiction.
         let llmRefuted = verdict.refuted && verdict.blockingKind != BlockingKind.contradiction
         if llmRefuted && verdict.confidence == .low && llm != nil {
-            if let blindVerdict = await blindReview(verdict: verdict, llm: llm!) {
+            if let blindVerdict = await blindReview(verdict: verdict, llm: llm) {
                 if !blindVerdict.refuted {
                     verdict = blindVerdict
                     verdict.fallbackNote = (verdict.fallbackNote ?? "") + "; blind review overrode low-confidence refute"

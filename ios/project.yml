@@ -45,6 +45,7 @@ targets:
         GENERATE_INFOPLIST_FILE: true
         PRODUCT_BUNDLE_IDENTIFIER: com.hardlaw.kit
         DEVELOPMENT_TEAM: SP272623JD
+        OTHER_LDFLAGS: [-lz]
 
   HardlawKitTests:
     type: bundle.unit-test
@@ -59,6 +60,7 @@ targets:
         GENERATE_INFOPLIST_FILE: true
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/HardlawApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/HardlawApp"
         BUNDLE_LOADER: "$(TEST_HOST)"
+        OTHER_LDFLAGS: [-lz]
 
   HardlawApp:
     type: application

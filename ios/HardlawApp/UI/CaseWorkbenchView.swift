@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import HardlawKit
 
 // MARK: - 案件看板（单一滚动视图，替代 TabView）
@@ -30,6 +31,11 @@ struct CaseWorkbenchView: View {
                     StatusBanner(text: statusMessage) { viewModel.statusMessage = nil }
                 }
 
+                // Batch import progress
+                if let phase = viewModel.importPhase, let progress = viewModel.importProgress {
+                    ImportProgressView(phase: phase, done: progress.done, total: progress.total)
+                }
+
                 if let goal = viewModel.goal {
                     GoalProgressView(goal: goal)
                 }
@@ -59,9 +65,14 @@ struct CaseWorkbenchView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
+                Button { showFileImporter = true } label: {
+                    Image(systemName: "folder.badge.plus")
+                }
+            }
+            ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button { addNewEvidence() } label: {
-                        Label("添加证据", systemImage: "plus.rectangle")
+                        Label("手动添加证据", systemImage: "plus.rectangle")
                     }
                     Button { exportCatalog() } label: {
                         Label("导出目录", systemImage: "square.and.arrow.up")
@@ -76,9 +87,14 @@ struct CaseWorkbenchView: View {
                        placeholder: nextAction, onSubmit: handleCommand,
                        onImport: { showFileImporter = true })
         }
-        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.pdf, .image, .plainText],
+        .fileImporter(isPresented: $showFileImporter,
+                      allowedContentTypes: [.folder, .pdf, .image, .plainText, UTType(filenameExtension: "zip") ?? .archive],
                       allowsMultipleSelection: true) { result in
-            if case .success(let urls) = result { viewModel.importFiles(urls) }
+            if case .success(let urls) = result {
+                let isDirectory = urls.contains { (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true }
+                let isZip = urls.contains { $0.pathExtension.lowercased() == "zip" }
+                Task { await viewModel.importBatch(urls, fromDirectory: isDirectory || isZip) }
+            }
         }
         .sheet(isPresented: $showEvidenceEditor) {
             if let item = editingItem { EvidenceEditorView(item: item) }
@@ -157,6 +173,23 @@ struct NeedsYouItem: Identifiable {
 
 // MARK: - 共享组件
 
+/// 隐私声明横幅：证据不离开设备
+struct TrustBanner: View {
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "lock.shield.fill")
+                .foregroundStyle(.green)
+                .font(.caption2)
+            Text("证据不离开设备 · 端侧 AI 处理")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity)
+        .background(.green.opacity(0.06))
+    }
+}
+
 /// 状态提示条：展示 statusMessage（操作结果 / 错误反馈），可手动关闭。
 struct StatusBanner: View {
     let text: String
@@ -231,7 +264,13 @@ struct CommandBar: View {
     var body: some View {
         HStack(spacing: 8) {
             Button(action: onImport) {
-                Image(systemName: "doc.badge.plus").font(.title3)
+                HStack(spacing: 4) {
+                    Image(systemName: "folder.badge.plus").font(.title3)
+                    Text("导入").font(.caption)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
             }
 
             HStack {

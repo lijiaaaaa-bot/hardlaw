@@ -270,6 +270,7 @@ public enum LaborLawStatutes {
     public static let gapDetectionBook = StatuteBook(statutes: [
         arbitrationLimitation, employmentRelationship, wageArrears,
         mixedEmployment, salaryStandard, doubleSalary, overtimePay,
-        unusedAnnualLeave, wrongfulTermination, paymentInLieu
+        unusedAnnualLeave, wrongfulTermination, paymentInLieu,
+        forcedTermination, additionalCompensation, severanceCalculation
     ])
 }

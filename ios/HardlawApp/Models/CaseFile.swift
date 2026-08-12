@@ -103,6 +103,7 @@ public final class EvidenceItem: Identifiable {
     public var provenance: Provenance    // 引用链追踪
     public var humanReviewed: Bool       // 律师已逐项核对
     public var batchID: UUID?            // 所属导入批次
+    public var sourceFile: String?       // 沙盒内源文件相对路径
 
     /// Computed display values
     public var proofContent: String { proofContentState.displayValue ?? "" }
@@ -137,6 +138,7 @@ public final class EvidenceItem: Identifiable {
         self.provenance = Provenance()
         self.humanReviewed = false
         self.batchID = nil
+        self.sourceFile = nil
     }
 }
 

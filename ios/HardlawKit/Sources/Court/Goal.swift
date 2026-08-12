@@ -65,6 +65,7 @@ public enum GoalStepKind: String, Sendable {
     case verifyCitations
     case detectGaps
     case checkConsistency
+    case autoFill
 }
 
 public enum GoalStepStatus: String, Sendable {
