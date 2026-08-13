@@ -34,25 +34,33 @@ public enum CourtProcedures {
     /// source while statutes require named evidence types) must continue the
     /// procedure instead of aborting it after a single verdict.
     ///
-    /// All 13 gap-detection statutes are wired in sequence; each verdict's
-    /// findings (gaps/notices) accumulate into the final gap summary.
+    /// All 13 gap-detection statutes, ordered by 请求权基础 (legal claim grouping)
+    /// so the report reads in legal logic order and adjacent statutes share
+    /// reasoning chains (e.g. 被迫解除/违法解除/代通知金 are mutually exclusive
+    /// termination paths). Mirrors LaborLawStatutes.gapDetectionBook.
+    public static let gapDetectionChecks: [(statute: String, step: String)] = [
+        // 第一组 劳动关系存续
+        ("劳动关系确认", "check_employment"),
+        ("工资标准核实", "check_salary_standard"),
+        ("双倍工资差额", "check_double_salary"),
+        // 第二组 工资债权
+        ("拖欠工资", "check_wages"),
+        ("加班费", "check_overtime_pay"),
+        ("经济补偿金计算", "check_severance"),
+        ("加付赔偿金", "check_additional_compensation"),
+        // 第三组 劳动关系消灭（互斥解除路径相邻）
+        ("被迫解除劳动合同", "check_forced_termination"),
+        ("违法解除赔偿金", "check_wrongful_termination"),
+        ("代通知金", "check_payment_in_lieu"),
+        // 第四组 程序性
+        ("仲裁时效", "check_arbitration_limitation"),
+        // 第五组 特殊情形
+        ("未休年休假工资", "check_unused_annual_leave"),
+        ("关联企业混同用工", "check_mixed"),
+    ]
+
     public static func gapDetection() throws -> Procedure {
-        // Statute name → step name. Order mirrors LaborLawStatutes.gapDetectionBook.
-        let checks: [(statute: String, step: String)] = [
-            ("劳动关系确认", "check_employment"),
-            ("拖欠工资", "check_wages"),
-            ("关联企业混同用工", "check_mixed"),
-            ("工资标准核实", "check_salary_standard"),
-            ("经济补偿金计算", "check_severance"),
-            ("加付赔偿金", "check_additional_compensation"),
-            ("被迫解除劳动合同", "check_forced_termination"),
-            ("仲裁时效", "check_arbitration_limitation"),
-            ("双倍工资差额", "check_double_salary"),
-            ("加班费", "check_overtime_pay"),
-            ("未休年休假工资", "check_unused_annual_leave"),
-            ("违法解除赔偿金", "check_wrongful_termination"),
-            ("代通知金", "check_payment_in_lieu"),
-        ]
+        let checks = gapDetectionChecks
 
         var steps: [Step] = []
         for (idx, check) in checks.enumerated() {
@@ -95,22 +103,8 @@ public enum CourtProcedures {
             ))
         }
 
-        // Gap-detection tail — mirrors the check list in `gapDetection()`.
-        let checks: [(statute: String, step: String)] = [
-            ("劳动关系确认", "check_employment"),
-            ("拖欠工资", "check_wages"),
-            ("关联企业混同用工", "check_mixed"),
-            ("工资标准核实", "check_salary_standard"),
-            ("经济补偿金计算", "check_severance"),
-            ("加付赔偿金", "check_additional_compensation"),
-            ("被迫解除劳动合同", "check_forced_termination"),
-            ("仲裁时效", "check_arbitration_limitation"),
-            ("双倍工资差额", "check_double_salary"),
-            ("加班费", "check_overtime_pay"),
-            ("未休年休假工资", "check_unused_annual_leave"),
-            ("违法解除赔偿金", "check_wrongful_termination"),
-            ("代通知金", "check_payment_in_lieu"),
-        ]
+        // Gap-detection tail — same grouped check list as `gapDetection()`.
+        let checks = gapDetectionChecks
         for (idx, check) in checks.enumerated() {
             let next = idx + 1 < checks.count ? checks[idx + 1].step : "collect"
             steps.append(Step(

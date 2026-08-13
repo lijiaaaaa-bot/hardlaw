@@ -123,7 +123,19 @@ public actor Court {
                 continue
             } else {
                 // --- LLM judgment point ---
-                let verdict = await invokeJudge(ctx: &ctx, step: step)
+                var verdict = await invokeJudge(ctx: &ctx, step: step)
+
+                // Deterministic cross-statute invariants (e.g. 2N/N+1 exclusion):
+                // an approved statute records itself so a later conflicting approval
+                // can be reconciled by the invariant, not trusted to the LLM.
+                let statuteNames = Set((step.statutes ?? []))
+                if !verdict.refuted {
+                    for name in statuteNames where !ctx.approvedStatutes.contains(name) {
+                        ctx.approvedStatutes.append(name)
+                    }
+                    verdict = enforceStatuteExclusion(verdict: verdict, ctx: ctx, stepStatutes: statuteNames)
+                }
+
                 verdicts.append(verdict)
                 ctx.findings.append(verdict)
 
@@ -187,6 +199,36 @@ public actor Court {
     }
 
     // MARK: - Judgment
+
+    /// Deterministic cross-statute invariant: 违法解除赔偿金(2N, 第87条)与
+    /// 代通知金(N+1, 第40条)不能兼得。若本步批准其中一个,而先前已批准另一个,
+    /// 强制 reconcile —— 把本步 verdict 改为 refuted + 互斥 finding,
+    /// 不让 LLM 同时主张两个互斥请求权。
+    private func enforceStatuteExclusion(verdict: Verdict, ctx: CaseContext, stepStatutes: Set<String>) -> Verdict {
+        // Mutually exclusive pairs: statute name → the statute it excludes.
+        let exclusions: [(statute: String, excludes: String, note: String)] = [
+            ("违法解除赔偿金", "代通知金",
+             "第87条违法解除赔偿(2N)与第40条代通知金(N+1)不能兼得，已拒绝后者"),
+            ("代通知金", "违法解除赔偿金",
+             "第40条代通知金(N+1)与第87条违法解除赔偿(2N)不能兼得，已拒绝后者"),
+        ]
+        let approved = Set(ctx.approvedStatutes)
+        for pair in exclusions {
+            // This step approved `pair.statute` and a prior step already approved
+            // its mutually-exclusive counterpart — reconcile deterministically.
+            if stepStatutes.contains(pair.statute) && approved.contains(pair.excludes) {
+                var v = verdict
+                v.refuted = true
+                v.blockingKind = BlockingKind.contradiction
+                v.findings.append(Finding(
+                    kind: "bug", location: "invariant/exclusion",
+                    detail: "\(pair.note)（先前已批准「\(pair.excludes)」）"))
+                v.fallbackNote = pair.note
+                return v
+            }
+        }
+        return verdict
+    }
 
     /// Invoke LLM at a judgment point, enforcing all hard constraints.
     /// Mirrors Python `Court._invoke_judge`.
@@ -292,7 +334,7 @@ public actor Court {
         // NOT from deterministic gates (evidence missing, hallucination, numeric entailment).
         // Deterministic gate refutes always set blockingKind to contradiction.
         let llmRefuted = verdict.refuted && verdict.blockingKind != BlockingKind.contradiction
-        if llmRefuted && verdict.confidence == .low && llm != nil {
+        if llmRefuted && verdict.confidence == .low {
             if let blindVerdict = await blindReview(verdict: verdict, llm: llm) {
                 if !blindVerdict.refuted {
                     verdict = blindVerdict

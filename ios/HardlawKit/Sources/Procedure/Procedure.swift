@@ -86,6 +86,9 @@ public struct CaseContext: Sendable {
     public var data: [String: JSONValue]
     /// Accumulated verdicts from judgment steps.
     public var findings: [Verdict]
+    /// Statute names that a prior judgment step approved (refuted == false).
+    /// Used by deterministic cross-statute invariants (e.g. 2N/N+1 exclusion).
+    public var approvedStatutes: [String]
     /// Ordered history of step names visited.
     public var stepHistory: [String]
     /// Gap fingerprints collected for stall detection.
@@ -99,6 +102,7 @@ public struct CaseContext: Sendable {
         caseId: String,
         data: [String: JSONValue] = [:],
         findings: [Verdict] = [],
+        approvedStatutes: [String] = [],
         stepHistory: [String] = [],
         gapFingerprints: [String] = [],
         roundCount: Int = 0,
@@ -107,6 +111,7 @@ public struct CaseContext: Sendable {
         self.caseId = caseId
         self.data = data
         self.findings = findings
+        self.approvedStatutes = approvedStatutes
         self.stepHistory = stepHistory
         self.gapFingerprints = gapFingerprints
         self.roundCount = roundCount

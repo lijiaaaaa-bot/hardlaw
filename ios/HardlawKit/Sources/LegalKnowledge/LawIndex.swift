@@ -145,6 +145,16 @@ public final class LawIndex: @unchecked Sendable {
             self.vectorDim = Int(dim)
             self._vectorsLoaded = true
         }
+
+        // Fail-fast: if a provider is already attached, its dimension must match
+        // the document vectors. A mismatch means semantic search would silently
+        // return nothing — surface it now instead of degrading invisibly.
+        let providerDim = lock.withLock { embeddingProvider?.dimension }
+        if let providerDim, providerDim != Int(dim) {
+            throw LawIndexError.dimensionMismatch(
+                "laws_vectors.bin dimension \(dim) != provider dimension \(providerDim) — re-export vectors with the matching embedding model"
+            )
+        }
     }
 
     // MARK: - Search
@@ -166,7 +176,13 @@ public final class LawIndex: @unchecked Sendable {
             setEmbeddingProvider(CoreMLEmbeddingProvider())
         }
         if !vectorsLoaded {
-            try? loadVectors()
+            do {
+                try loadVectors()
+            } catch {
+                // Non-fatal: keyword-only search still works, but surface the
+                // reason (e.g. dimension mismatch) instead of hiding it.
+                print("[LawIndex] ⚠️ 向量加载失败，降级为关键词搜索: \(error)")
+            }
         }
 
         // Build chunk lookup map
@@ -328,4 +344,5 @@ public final class LawIndex: @unchecked Sendable {
 public enum LawIndexError: Error {
     case resourceNotFound
     case invalidFormat(String)
+    case dimensionMismatch(String)
 }

@@ -82,11 +82,14 @@ public actor MLXLLM: LLMBackend {
     }
 
     /// Resolve the pinned revision for the configured model ID.
+    /// Unknown model IDs are a configuration error — fail loudly instead of
+    /// silently falling back to unpinned "main".
     private static func revision(for modelID: String) -> String {
         switch modelID {
         case defaultModelID: return defaultModelRevision
         case fallbackModelID: return fallbackModelRevision
-        default: return "main"
+        default:
+            fatalError("MLXLLM: unpinned modelID '\(modelID)' — add a pinned revision to MLXLLM.swift before using it")
         }
     }
 

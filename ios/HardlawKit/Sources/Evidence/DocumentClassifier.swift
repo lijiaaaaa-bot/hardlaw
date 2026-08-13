@@ -60,8 +60,10 @@ public enum DocumentClassifier {
 
     // MARK: - Public API
 
-    /// Normalize full-width digits/letters to half-width (OCR 常见「第３８条」→「第38条」),
-    /// so keyword and disambiguation matching survives full-width input.
+    /// Normalize OCR-ish input so keyword matching survives common variants:
+    /// - 全角数字/字母 → 半角（第３８条 → 第38条）
+    /// - 全角标点 → 半角（（）：，。→():,.）
+    /// - 条文号中文数字 → 阿拉伯（第三十八条 → 第38条），仅处理"第N条"形态
     private static func normalizeFullWidth(_ s: String) -> String {
         var out = String.UnicodeScalarView()
         for scalar in s.unicodeScalars {
@@ -70,11 +72,53 @@ public enum DocumentClassifier {
                 out.append(UnicodeScalar(scalar.value - 0xFEE0)!)
             case 0xFF21...0xFF3A, 0xFF41...0xFF5A: // 全角 A-Z / a-z
                 out.append(UnicodeScalar(scalar.value - 0xFEE0)!)
+            case 0xFF08: out.append("(") // （
+            case 0xFF09: out.append(")") // ）
+            case 0xFF1A: out.append(":") // ：
+            case 0xFF0C: out.append(",") // ，
+            case 0xFF0E: out.append(".") // ．
+            case 0x3001: out.append(",") // 、
+            case 0x3002: out.append(".") // 。
             default:
                 out.append(scalar)
             }
         }
-        return String(out)
+        // 条文号中文数字 → 阿拉伯：第([一二三四五六七八九十百]+)条/款
+        return Self.chineseArticleToArabic(String(out))
+    }
+
+    /// Convert Chinese numerals inside 第N条/第N款 to Arabic digits.
+    /// Supports 1..99 via 十 composition; larger numbers fall back to the original.
+    private static func chineseArticleToArabic(_ s: String) -> String {
+        let chars: [Character: Int] = [
+            "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5,
+            "六": 6, "七": 7, "八": 8, "九": 9,
+        ]
+        // Parse a Chinese numeral (1..99): 十 as pivot (三十五 = 35, 十 = 10, 二十 = 20)
+        func parse(_ raw: String) -> Int? {
+            if raw.contains("十") {
+                let parts = raw.split(separator: "十", omittingEmptySubsequences: false).map(String.init)
+                let tens = parts.count > 0 && !parts[0].isEmpty ? (chars[Character(parts[0])] ?? 0) * 10 : 10
+                let ones = parts.count > 1 && !parts[1].isEmpty ? (chars[Character(parts[1])] ?? 0) : 0
+                guard tens <= 90, ones <= 9, !(parts.count == 1 && raw == "十") else { return nil }
+                return tens + ones
+            }
+            guard let d = chars[Character(raw)], raw.count == 1 else { return nil }
+            return d
+        }
+        let pattern = #"第([一二三四五六七八九十两]+)[条款]"#
+        guard let re = try? NSRegularExpression(pattern: pattern) else { return s }
+        let ns = NSRange(s.startIndex..<s.endIndex, in: s)
+        var out = s
+        for m in re.matches(in: s, options: [], range: ns).reversed() {
+            guard let r = Range(m.range, in: s),
+                  let numRange = Range(m.range(at: 1), in: s) else { continue }
+            let raw = String(s[numRange])
+            guard let n = parse(raw) else { continue }
+            let suffix = r.upperBound < s.endIndex && s[r.upperBound] == "款" ? "款" : "条"
+            out.replaceSubrange(r, with: "第\(n)\(suffix)")
+        }
+        return out
     }
 
     /// Classify a document by filename and OCR content.
