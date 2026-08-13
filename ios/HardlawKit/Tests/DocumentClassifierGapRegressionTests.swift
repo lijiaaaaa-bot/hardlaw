@@ -123,6 +123,25 @@ final class DocumentClassifierGapRegressionTests: XCTestCase {
         XCTAssertEqual(category, .dismissalNotice, "G4b: 全角第39条 + 辞退应识别为单方解除")
     }
 
+    /// G4c: 纯全角条文号(无 marker 词)——条文号是唯一定类信号。
+    /// 修复前依赖平局先到者胜的偶然正确;归一化后确定性成立。
+    func testG4cFullWidth38PureArticleIsTerminationNotice() {
+        let category = DocumentClassifier.classify(
+            fileName: "解除通知书.pdf",
+            ocrText: "解除劳动关系通知书\n依据《劳动合同法》第３８条"
+        )
+        XCTAssertEqual(category, .terminationNotice, "G4c: 纯全角第38条应识别为被迫解除通知书")
+    }
+
+    /// G4d: 纯全角「第３９条」→ dismissalNotice(无 marker 词)。
+    func testG4dFullWidth39PureArticleIsDismissalNotice() {
+        let category = DocumentClassifier.classify(
+            fileName: "解除通知书.pdf",
+            ocrText: "解除劳动关系通知书\n依据《劳动合同法》第３９条"
+        )
+        XCTAssertEqual(category, .dismissalNotice, "G4d: 纯全角第39条应识别为单方解除")
+    }
+
     // MARK: - G5-G10 关键词缺口(对齐豆包基准, top-3 命中语义)
 
     /// G5: 建造师证书查询 → top-3 含 workHistory。

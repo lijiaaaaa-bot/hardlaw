@@ -60,9 +60,28 @@ public enum DocumentClassifier {
 
     // MARK: - Public API
 
+    /// Normalize full-width digits/letters to half-width (OCR 常见「第３８条」→「第38条」),
+    /// so keyword and disambiguation matching survives full-width input.
+    private static func normalizeFullWidth(_ s: String) -> String {
+        var out = String.UnicodeScalarView()
+        for scalar in s.unicodeScalars {
+            switch scalar.value {
+            case 0xFF10...0xFF19: // 全角数字 ０-９
+                out.append(UnicodeScalar(scalar.value - 0xFEE0)!)
+            case 0xFF21...0xFF3A, 0xFF41...0xFF5A: // 全角 A-Z / a-z
+                out.append(UnicodeScalar(scalar.value - 0xFEE0)!)
+            default:
+                out.append(scalar)
+            }
+        }
+        return String(out)
+    }
+
     /// Classify a document by filename and OCR content.
     /// Returns nil when no category reaches the minimum confidence threshold.
     public static func classify(fileName: String, ocrText: String) -> EvidenceCategory? {
+        let fileName = normalizeFullWidth(fileName)
+        let ocrText = normalizeFullWidth(ocrText)
         let firstLine = ocrText.split(separator: "\n", omittingEmptySubsequences: true).first.map(String.init) ?? ""
 
         var bestScore = 0
@@ -106,6 +125,8 @@ public enum DocumentClassifier {
     /// Multi-category classification — returns top-N candidates for AI prompts.
     /// The AI prompt can present these as a constrained choice list.
     public static func classifyTopN(fileName: String, ocrText: String, n: Int = 3) -> [EvidenceCategory] {
+        let fileName = normalizeFullWidth(fileName)
+        let ocrText = normalizeFullWidth(ocrText)
         let firstLine = ocrText.split(separator: "\n", omittingEmptySubsequences: true).first.map(String.init) ?? ""
 
         var scored: [(EvidenceCategory, Int)] = []

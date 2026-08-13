@@ -33,33 +33,55 @@ public enum CourtProcedures {
     /// a hard evidence validation failure (e.g. rule-based refs cite a generic
     /// source while statutes require named evidence types) must continue the
     /// procedure instead of aborting it after a single verdict.
+    ///
+    /// All 13 gap-detection statutes are wired in sequence; each verdict's
+    /// findings (gaps/notices) accumulate into the final gap summary.
     public static func gapDetection() throws -> Procedure {
-        try Procedure(
+        // Statute name → step name. Order mirrors LaborLawStatutes.gapDetectionBook.
+        let checks: [(statute: String, step: String)] = [
+            ("劳动关系确认", "check_employment"),
+            ("拖欠工资", "check_wages"),
+            ("关联企业混同用工", "check_mixed"),
+            ("工资标准核实", "check_salary_standard"),
+            ("经济补偿金计算", "check_severance"),
+            ("加付赔偿金", "check_additional_compensation"),
+            ("被迫解除劳动合同", "check_forced_termination"),
+            ("仲裁时效", "check_arbitration_limitation"),
+            ("双倍工资差额", "check_double_salary"),
+            ("加班费", "check_overtime_pay"),
+            ("未休年休假工资", "check_unused_annual_leave"),
+            ("违法解除赔偿金", "check_wrongful_termination"),
+            ("代通知金", "check_payment_in_lieu"),
+        ]
+
+        var steps: [Step] = []
+        for (idx, check) in checks.enumerated() {
+            let next = idx + 1 < checks.count ? checks[idx + 1].step : "collect"
+            steps.append(Step(
+                name: check.step,
+                kind: .judgment,
+                statutes: [check.statute],
+                transitions: ["not_refuted": next, "refuted": next, "blocked": next]
+            ))
+        }
+        steps.append(Step(name: "collect", kind: .code,
+            handler: { ctx in
+                let gaps = ctx.findings.flatMap { v in v.findings.filter { !$0.isEmpty } }
+                ctx.metadata["gap_count"] = JSONValue.number(Double(gaps.count))
+            },
+            transitions: [:]))
+
+        return try Procedure(
             name: "gap_detection",
-            steps: [
-                Step(name: "check_employment", kind: .judgment,
-                     statutes: ["劳动关系确认"],
-                     transitions: ["not_refuted": "check_wages", "refuted": "check_wages", "blocked": "check_wages"]),
-                Step(name: "check_wages", kind: .judgment,
-                     statutes: ["拖欠工资"],
-                     transitions: ["not_refuted": "check_mixed", "refuted": "check_mixed", "blocked": "check_mixed"]),
-                Step(name: "check_mixed", kind: .judgment,
-                     statutes: ["关联企业混同用工"],
-                     transitions: ["not_refuted": "collect", "refuted": "collect", "blocked": "collect"]),
-                Step(name: "collect", kind: .code,
-                     handler: { ctx in
-                         let gaps = ctx.findings.flatMap { v in v.findings.filter { !$0.isEmpty } }
-                         ctx.metadata["gap_count"] = JSONValue.number(Double(gaps.count))
-                     },
-                     transitions: [:]),
-            ],
-            maxRounds: 5
+            steps: steps,
+            maxRounds: steps.count + 1
         )
     }
 
     // MARK: - Full Review
 
     /// Combine catalog generation + gap detection in one procedure.
+    /// The gap-detection tail wires all 13 statutes (same as `gapDetection()`).
     public static func fullReview(itemCount: Int) throws -> Procedure {
         var steps: [Step] = []
         for i in 1...itemCount {
@@ -72,22 +94,39 @@ public enum CourtProcedures {
                     : ["not_refuted": "check_employment", "refuted": "check_employment"]
             ))
         }
-        steps.append(Step(name: "check_employment", kind: .judgment,
-            statutes: ["劳动关系确认"],
-            transitions: ["not_refuted": "check_wages", "refuted": "check_wages", "blocked": "check_wages"]))
-        steps.append(Step(name: "check_wages", kind: .judgment,
-            statutes: ["拖欠工资"],
-            transitions: ["not_refuted": "check_mixed", "refuted": "check_mixed", "blocked": "check_mixed"]))
-        steps.append(Step(name: "check_mixed", kind: .judgment,
-            statutes: ["关联企业混同用工"],
-            transitions: ["not_refuted": "collect", "refuted": "collect", "blocked": "collect"]))
+
+        // Gap-detection tail — mirrors the check list in `gapDetection()`.
+        let checks: [(statute: String, step: String)] = [
+            ("劳动关系确认", "check_employment"),
+            ("拖欠工资", "check_wages"),
+            ("关联企业混同用工", "check_mixed"),
+            ("工资标准核实", "check_salary_standard"),
+            ("经济补偿金计算", "check_severance"),
+            ("加付赔偿金", "check_additional_compensation"),
+            ("被迫解除劳动合同", "check_forced_termination"),
+            ("仲裁时效", "check_arbitration_limitation"),
+            ("双倍工资差额", "check_double_salary"),
+            ("加班费", "check_overtime_pay"),
+            ("未休年休假工资", "check_unused_annual_leave"),
+            ("违法解除赔偿金", "check_wrongful_termination"),
+            ("代通知金", "check_payment_in_lieu"),
+        ]
+        for (idx, check) in checks.enumerated() {
+            let next = idx + 1 < checks.count ? checks[idx + 1].step : "collect"
+            steps.append(Step(
+                name: check.step,
+                kind: .judgment,
+                statutes: [check.statute],
+                transitions: ["not_refuted": next, "refuted": next, "blocked": next]
+            ))
+        }
         steps.append(Step(name: "collect", kind: .code,
             handler: { ctx in
                 let gaps = ctx.findings.flatMap { v in v.findings.filter { !$0.isEmpty } }
                 ctx.metadata["gap_count"] = JSONValue.number(Double(gaps.count))
             },
             transitions: [:]))
-        return try Procedure(name: "full_review", steps: steps, maxRounds: itemCount + 5)
+        return try Procedure(name: "full_review", steps: steps, maxRounds: itemCount + 14)
     }
 
     // MARK: - Consistency Check

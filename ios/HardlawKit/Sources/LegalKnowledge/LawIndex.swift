@@ -9,7 +9,7 @@ import Foundation
 /// ## Architecture
 ///
 /// - **Document vectors**: Pre-computed by Python, loaded from `laws_vectors.bin`.
-///   11,157 vectors × 384 dimensions, float32, L2-normalized.
+///   11,157 vectors × 512 dimensions, float32, L2-normalized.
 /// - **Query embedding**: Optional `EmbeddingProvider` (CoreML/MLX). When
 ///   unavailable, falls back to keyword-only search.
 /// - **RRF merge**: Reciprocal Rank Fusion combining keyword and semantic
@@ -19,7 +19,7 @@ import Foundation
 ///
 /// ## Performance
 ///
-/// Brute-force inner product search over 11K×384 vectors runs in <5ms on
+/// Brute-force inner product search over 11K×512 vectors runs in <5ms on
 /// iPhone CPU using Accelerate BLAS. No FAISS dependency needed at this scale.
 public final class LawIndex: @unchecked Sendable {
     // MARK: - Properties
@@ -219,7 +219,7 @@ public final class LawIndex: @unchecked Sendable {
 
     /// Brute-force inner product search over document vectors.
     ///
-    /// At 11K × 384 dimensions, this completes in <5ms on iPhone CPU.
+    /// At 11K × 512 dimensions, this completes in <5ms on iPhone CPU.
     /// Uses Accelerate `cblas_sgemv` or a simple vectorized loop.
     private func semanticSearch(
         _ queryVec: [Float],
@@ -233,7 +233,10 @@ public final class LawIndex: @unchecked Sendable {
             (self.docVectors, self.vectorIDs, self.nVectors, self.vectorDim)
         }
 
-        guard queryVec.count == dim else { return [] }
+        guard queryVec.count == dim else {
+            print("[LawIndex] ⚠️ 维度不匹配: provider query \(queryVec.count) 维 vs 文档向量 \(dim) 维 — 语义搜索降级为关键词搜索")
+            return []
+        }
 
         let effectiveK = min(k, n)
 

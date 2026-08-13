@@ -19,6 +19,14 @@ public actor MLXLLM: LLMBackend {
     public static let defaultModelID = "mlx-community/Qwen2.5-3B-Instruct-4bit"
     public static let fallbackModelID = "mlx-community/Qwen2.5-0.5B-Instruct-4bit"
 
+    /// Pinned revisions (supply-chain integrity): the exact HF snapshot this
+    /// build was validated against. Do NOT bump without re-running the bench
+    /// and updating the tests.
+    /// - default: resolved from the local HF cache on 2026-08-13
+    /// - fallback: resolved from the local HF cache on 2026-08-13
+    public static let defaultModelRevision = "4f83f8f146fdf28b512a06562b671d7af4fab457"
+    public static let fallbackModelRevision = "a5339a4131f135d0fdc6a5c8b5bbed2753bbe0f3"
+
     private var container: ModelContainer?
     private let modelID: String
 
@@ -73,15 +81,25 @@ public actor MLXLLM: LLMBackend {
         self.modelID = modelID
     }
 
+    /// Resolve the pinned revision for the configured model ID.
+    private static func revision(for modelID: String) -> String {
+        switch modelID {
+        case defaultModelID: return defaultModelRevision
+        case fallbackModelID: return fallbackModelRevision
+        default: return "main"
+        }
+    }
+
     public func judge(_ prompt: String) async throws -> String {
         let c: ModelContainer
         if let m = container { c = m }
         else {
             let id = modelID
+            let revision = Self.revision(for: id)
             c = try await loadModelContainer(
                 from: #hubDownloader(),
                 using: #huggingFaceTokenizerLoader(),
-                configuration: .init(id: id),
+                configuration: .init(id: id, revision: revision),
                 progressHandler: { p in
                     print("[MLXLLM] Downloading: \(Int(p.fractionCompleted * 100))%")
                 }
