@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [feature/hardlaw-ios, main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: cd ios && xcodegen generate
+
+      - name: Pick available simulator
+        run: |
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); ds=[x["name"] for _,v in d["devices"].items() for x in v if x["isAvailable"] and x["name"].startswith("iPhone")]; print(ds[0] if ds else "iPhone 16")')
+          echo "DEVICE=$DEVICE" >> "$GITHUB_ENV"
+
+      - name: Build & test
+        run: |
+          cd ios
+          xcodebuild test -project Hardlaw.xcodeproj -scheme HardlawKit \
+            -destination "platform=iOS Simulator,name=$DEVICE" \
+            -derivedDataPath ../.derived \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcresult
+          path: |
+            .derived/Logs/Test/*.xcresult
+          if-no-files-found: ignore

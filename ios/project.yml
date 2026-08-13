@@ -83,6 +83,9 @@ targets:
     resources:
       - path: HardlawApp/LegalKnowledge
         type: folder
+      - path: HardlawApp/bge-small-zh-v1.5.mlpackage
+        # Xcode compiles .mlpackage → .mlmodelc at build time;
+        # CoreMLEmbeddingProvider loads "bge-small-zh-v1.5.mlmodelc" from the app bundle.
     info:
       path: HardlawApp/Info.plist
       properties:

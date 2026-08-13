@@ -175,7 +175,7 @@ Note: Tests in `LawIndexTests` will crash due to Bug #1 (duplicate IDs) before a
 
 `ios/project.yml`:
 - Target `HardlawKit` includes `HardlawKit/Sources/LegalKnowledge` in sources -- **CORRECT**
-- Resources include `HardlawKit/Resources/LegalKnowledge` as folder reference -- **CORRECT**
+- Runtime resources live in `HardlawApp/LegalKnowledge` (packed by `HardlawApp` target as folder reference, loaded via `Bundle.main`) -- **CORRECT** (single source of truth; `laws_vectors.bin` is 512-dim BGE-small-zh-v1.5, matching `CoreMLEmbeddingProvider.dimension`)
 - `GENERATE_INFOPLIST_FILE: true` -- **CORRECT**
 - Swift 6.0 with strict concurrency -- **CORRECT** (all types use `Sendable`)
 - Deployment target iOS 17.0 -- appropriate for NLTokenizer

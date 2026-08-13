@@ -1,56 +1,40 @@
-# VisionInsight iOS 应用
+# Hardlaw — 劳动/民事法律证据链 iOS 工作台
 
-## 项目简介
-
-VisionInsight 是一个基于 iPhone 16 Pro Max 原生 AI 能力的探索应用，充分利用 Apple Neural Engine 和系统轻量LLM进行智能处理。
+面向法律工作者的 **iOS 本地化案件工作台**：离线中文法律检索、批量导入、AI 证据自动填充与 fail-closed 判定，全程设备端处理，案卷材料不上传。
 
 ## 核心特性
 
-### 🚀 AI能力检测
-- 特征向量提取
-- 人体姿态识别  
-- 手部关键点检测
-- 人像分割
-- 文档边界识别
-- 面部关键点检测
+- 📚 **离线法律检索** — 165 部法规、11,724 条法条 chunk；关键词 + BGE-small-zh-v1.5（512 维）语义混合检索
+- ⚖️ **fail-closed 判定** — `Court` 状态机 + 劳动法证据规则引擎 + 端侧 MLXLLM，规则不满足默认拒绝
+- 🔍 **反幻觉校验** — AI 引用必须逐字命中案卷原文（substring check），杜绝伪造证据引用
+- 📦 **批量导入** — 文件夹 / zip 导入（防路径穿越、zip bomb），导入可取消
+- ✍️ **AI 自动填充** — OCR 证据逐项填表，数值取自原文（source-grounding 门控），人工覆盖优先
+- 🖼️ **双 OCR 引擎** — Vision 框架 + PaddleOCR 静态库
+- 🧪 **真实案卷验证** — 郭又义劳动争议案 40+ 份真实材料端到端测试，对照律师结论
 
-### 🔍 意图识别
-- 基于系统原生LLM的自然语言理解
-- 实时语义分析
-- 智能任务路由
+## 技术栈
 
-### 🎥 实时分析
-- 直接连接摄像头实时处理
-- NPU硬件加速  
-- 流式多任务并行
+| 层 | 技术 |
+|---|---|
+| 语言/并发 | Swift 6，strict concurrency，actor 隔离 |
+| 检索 | NLTokenizer 关键词 + FAISS 风格向量（CoreML 512 维 query） |
+| LLM | RuleBasedLLM（<1ms）→ FailSafeLLM 降级 → MLXLLM（端侧，约 1.9GB） |
+| OCR | Vision + PaddleOCR（C++ 静态库） |
+| 工程 | XcodeGen（pbxproj 生成），3 targets，186 个 XCTest |
 
-## 技术架构
+## 快速开始
 
-### 本地化优势
-- ✅ 所有计算在设备端完成
-- ✅ 零网络流量消耗  
-- ✅ 完全隐私保护
-- ✅ 毫秒级响应性能
-
-### 系统集成
-```swift
-// 使用系统Vision框架（全部在NPU上执行）
-let request = VNDetectHumanBodyPoseRequest { [weak self] request, error in
-    // 完全本地处理，无需网络
-}
-request.usesCPUOnly = false  // 自动使用NPU
+```bash
+brew install xcodegen
+cd ios && xcodegen generate
+xcodebuild test -project Hardlaw.xcodeproj -scheme HardlawKit \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
-## 部署说明
+## 文档
 
-1. 使用 Xcode 连接 iPhone 16 Pro Max
-2. 建议iOS系统版本：17.0+
-3. 应用自动检测并展示所有可用的AI能力
-4. 所有处理均在本地完成，无需互联网连接
+`README.md`（总览）· `ios/README.md`（工程细节）· `docs/embedding-provider-plan.md`（语义检索方案）· `expert-review-report.html`（专家评审）
 
-## 隐私保护
+## License
 
-- 数据完整保留在设备端
-- 无网络传输  
-- 系统级数据加密
-- 符合GDPR/CCPA等合规要求
+MIT
