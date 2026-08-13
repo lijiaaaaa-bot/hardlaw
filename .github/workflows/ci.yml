@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  push:
+    branches: [feature/hardlaw-ios, main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: cd ios && xcodegen generate
+
+      - name: Pick available simulator
+        run: |
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); ds=[x["name"] for _,v in d["devices"].items() for x in v if x["isAvailable"] and x["name"].startswith("iPhone")]; print(ds[0] if ds else "iPhone 16")')
+          echo "DEVICE=$DEVICE" >> "$GITHUB_ENV"
+
+      - name: Build & test
+        run: |
+          cd ios
+          # Exclude material/device-dependent suites: they need real evidence files
+          # (test-resources/raw-evidence was removed from git) or on-device PaddleOCR,
+          # so they would fail/empty-run in CI. Pure-logic suites run in full.
+          xcodebuild test -project Hardlaw.xcodeproj -scheme HardlawKit \
+            -destination "platform=iOS Simulator,name=$DEVICE" \
+            -derivedDataPath ../.derived \
+            CODE_SIGNING_ALLOWED=NO \
+            -skip-testing:HardlawKitTests/DoubaoBaselineTests \
+            -skip-testing:HardlawKitTests/RealEvidenceEndToEndTests
+
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcresult
+          path: |
+            .derived/Logs/Test/*.xcresult
+          if-no-files-found: ignore
+
+  # ── TestFlight 发布(云端构建+上传) ──────────────────────────────
+  # 前提(用户需在 GitHub Secrets 配置):
+  #   APPLE_API_KEY       App Store Connect API Key(如 "XXXXXXXXXX.p8" 内容)
+  #   APPLE_API_ISSUER    API Key Issuer ID
+  #   APPLE_API_KEY_ID    10 位 Key ID
+  # 未配置时本 job 自动跳过(不阻塞现有 CI)。
+  testflight:
+    runs-on: macos-15
+    timeout-minutes: 45
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/hardlaw-ios')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Check secrets
+        id: secrets
+        run: |
+          if [ -z "${{ secrets.APPLE_API_KEY }}" ] || [ -z "${{ secrets.APPLE_API_ISSUER }}" ] || [ -z "${{ secrets.APPLE_API_KEY_ID }}" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::App Store Connect secrets 未配置,跳过 TestFlight 上传"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install XcodeGen
+        if: steps.secrets.outputs.skip != 'true'
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        if: steps.secrets.outputs.skip != 'true'
+        run: cd ios && xcodegen generate
+
+      - name: Archive app
+        if: steps.secrets.outputs.skip != 'true'
+        run: |
+          cd ios
+          xcodebuild archive -project Hardlaw.xcodeproj -scheme HardlawApp \
+            -archivePath ../Hardlaw.xcarchive \
+            -destination "generic/platform=iOS" \
+            -allowProvisioningUpdates \
+            CODE_SIGN_STYLE=Automatic
+
+      - name: Export & upload to TestFlight
+        if: steps.secrets.outputs.skip != 'true'
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: |
+          # 导出 ipa
+          xcodebuild -exportArchive -archivePath Hardlaw.xcarchive \
+            -exportPath /tmp/export \
+            -exportOptionsPlist <(cat <<EOF
+          {
+            "method": "app-store-connect",
+            "teamID": "SP272623JD",
+            "destination": "upload",
+            "uploadSymbols": true
+          }
+          EOF
+          )
+          # 用 App Store Connect API key 上传
+          IPA=$(ls /tmp/export/*.ipa | head -1)
+          echo "上传 $IPA"
+          xcrun altool --upload-app --file "$IPA" \
+            --apiKey "$APPLE_API_KEY_ID" --apiIssuer "$APPLE_API_ISSUER" \
+            --type ios

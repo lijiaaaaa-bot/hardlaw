@@ -8,3 +8,24 @@ dist/
 build/
 *.egg
 .DS_Store
+
+# Xcode
+ios/*.xcodeproj/
+ios/*.xcworkspace/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+ios/.build/
+*.dia
+
+# SwiftPM / MLX artifacts
+ios/.swiftpm/
+ios/**/Packages/
+ios/Models/*.mlmodelc
+ios/Models/*.mlpackage
+
+# Reasonix runtime state (session/task snapshots)
+.reasonix/
+
+# Local MCP config (machine-specific absolute paths)
+.mcp.json

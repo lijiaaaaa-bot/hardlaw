@@ -1,0 +1,781 @@
+<title>Hardlaw 独立专家团全方位评审报告</title>
+
+<style>
+  :root {
+    --bg: #fafaf9;
+    --surface: #ffffff;
+    --surface-alt: #f5f4f2;
+    --border: #e7e5e0;
+    --text: #1c1b18;
+    --text-secondary: #5e5b55;
+    --text-muted: #8b887e;
+    --accent: #2c5282;
+    --accent-light: #ebf1f7;
+    --severity-critical: #c53030;
+    --severity-high: #c05621;
+    --severity-medium: #b7791f;
+    --severity-low: #2b6cb0;
+    --score-bg: #f0ede8;
+    --rule: #d4d0c8;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141311;
+      --surface: #1c1b18;
+      --surface-alt: #24221e;
+      --border: #38352f;
+      --text: #f0ede8;
+      --text-secondary: #b8b3a8;
+      --text-muted: #7a756a;
+      --accent: #63b3ed;
+      --accent-light: #1a2d3d;
+      --severity-critical: #fc8181;
+      --severity-high: #f6ad55;
+      --severity-medium: #f6e05e;
+      --severity-low: #63b3ed;
+      --score-bg: #24221e;
+      --rule: #38352f;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #141311;
+    --surface: #1c1b18;
+    --surface-alt: #24221e;
+    --border: #38352f;
+    --text: #f0ede8;
+    --text-secondary: #b8b3a8;
+    --text-muted: #7a756a;
+    --accent: #63b3ed;
+    --accent-light: #1a2d3d;
+    --severity-critical: #fc8181;
+    --severity-high: #f6ad55;
+    --severity-medium: #f6e05e;
+    --severity-low: #63b3ed;
+    --score-bg: #24221e;
+    --rule: #38352f;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
+    font-size: 15px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .report {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 48px 24px 80px;
+  }
+
+  .masthead {
+    padding-bottom: 32px;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 40px;
+  }
+
+  .masthead-eyebrow {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+
+  .masthead h1 {
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    margin-bottom: 8px;
+  }
+
+  .masthead .meta {
+    font-size: 14px;
+    color: var(--text-secondary);
+  }
+
+  .summary-bar {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin-bottom: 40px;
+  }
+
+  .summary-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+  }
+
+  .summary-card .expert {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+
+  .summary-card .score {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .summary-card .score-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  .section {
+    margin-bottom: 40px;
+  }
+
+  .section h2 {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .section h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text-secondary);
+  }
+
+  .finding-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .finding-table thead th {
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    padding: 8px 12px;
+    border-bottom: 2px solid var(--rule);
+  }
+
+  .finding-table tbody td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  .finding-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    padding: 2px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+  }
+
+  .badge-p0 { background: #fff5f5; color: var(--severity-critical); }
+  .badge-p1 { background: #fffaf0; color: var(--severity-high); }
+
+  @media (prefers-color-scheme: dark) {
+    .badge-p0 { background: #2d1f1f; }
+    .badge-p1 { background: #2d2418; }
+  }
+
+  :root[data-theme="dark"] .badge-p0 { background: #2d1f1f; }
+  :root[data-theme="dark"] .badge-p1 { background: #2d2418; }
+
+  .file-ref {
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+    font-size: 12px;
+    color: var(--text-muted);
+    background: var(--surface-alt);
+    padding: 1px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+
+  .expert-tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-right: 4px;
+    text-transform: uppercase;
+    background: var(--accent-light);
+    color: var(--accent);
+  }
+
+  .score-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+  }
+
+  .score-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+
+  .score-row .dim {
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .score-row .val {
+    font-size: 15px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .score-lo { color: var(--severity-critical); }
+  .score-mid { color: var(--severity-medium); }
+  .score-hi { color: var(--severity-low); }
+
+  .callout {
+    background: var(--surface-alt);
+    border-left: 3px solid var(--accent);
+    padding: 16px 20px;
+    border-radius: 0 6px 6px 0;
+    margin: 16px 0;
+  }
+
+  .callout.warn {
+    border-left-color: var(--severity-high);
+    background: #fffaf0;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .callout.warn { background: #2d2418; }
+  }
+
+  :root[data-theme="dark"] .callout.warn { background: #2d2418; }
+
+  .callout p {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+  }
+
+  .callout p strong {
+    color: var(--text);
+  }
+
+  .roadmap-step {
+    display: grid;
+    grid-template-columns: 60px 1fr;
+    gap: 16px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .roadmap-step:last-child { border-bottom: none; }
+
+  .roadmap-phase {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding-top: 2px;
+  }
+
+  .roadmap-body h4 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .roadmap-body p {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.55;
+  }
+
+  .consensus-list {
+    list-style: none;
+    display: grid;
+    gap: 12px;
+  }
+
+  .consensus-list li {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    font-size: 14px;
+    padding: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+
+  .consensus-list .severity-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 6px;
+  }
+
+  .dot-p0 { background: var(--severity-critical); }
+  .dot-p1 { background: var(--severity-high); }
+
+  .panel-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+
+  .panel-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+
+  .panel-card .role {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+
+  .panel-card .title {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .panel-card .dims {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  @media (max-width: 640px) {
+    .summary-bar { grid-template-columns: repeat(2, 1fr); }
+    .finding-table { font-size: 12px; }
+    .finding-table thead { display: none; }
+    .finding-table tbody td {
+      display: block;
+      padding: 6px 0;
+    }
+    .finding-table tbody td::before {
+      content: attr(data-label);
+      font-weight: 600;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      display: block;
+    }
+    .report { padding: 24px 16px 48px; }
+  }
+</style>
+
+<div class="report">
+
+<header class="masthead">
+  <div class="masthead-eyebrow">独立专家团评审报告 &middot; 2026-08-11</div>
+  <h1>Hardlaw 法律科技应用<br>全方位专家评审</h1>
+  <p class="meta">五位独立专家，35+评价维度，深入代码仓逐行审计。评审对象：iOS 端 + Python 端完整代码仓。</p>
+</header>
+
+<section class="section">
+  <h2>评审专家团</h2>
+  <div class="panel-list">
+    <div class="panel-card">
+      <div class="role">专家一</div>
+      <div class="title">劳动法律师</div>
+      <div class="dims">法律要件完整性、证据规则、补偿金计算、法条引用、程序公正性、混同用工、法律风险评估</div>
+    </div>
+    <div class="panel-card">
+      <div class="role">专家二</div>
+      <div class="title">AI / ML 系统专家</div>
+      <div class="dims">LLM回退链、反幻觉机制、混合搜索、Prompt工程、RuleBasedLLM、MLX方案、Stall Detection、双端一致性</div>
+    </div>
+    <div class="panel-card">
+      <div class="role">专家三</div>
+      <div class="title">iOS 软件架构专家</div>
+      <div class="dims">并发模型、错误处理、测试覆盖、内存管理、API一致性、Codable质量、模块化、性能关键路径</div>
+    </div>
+    <div class="panel-card">
+      <div class="role">专家四</div>
+      <div class="title">隐私与安全专家</div>
+      <div class="dims">端侧隐私声明、敏感数据保护、MLX供应链、数据隔离、文件导入、GDPR/个保法</div>
+    </div>
+    <div class="panel-card">
+      <div class="role">专家五</div>
+      <div class="title">法律科技产品专家</div>
+      <div class="dims">用户定位、工作流设计、Goal-Driven架构、自然语言交互、输出可操作性、差异化、商业化</div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <h2>综合评分总览</h2>
+  <div class="summary-bar">
+    <div class="summary-card">
+      <div class="expert">劳动法</div>
+      <div class="score">5.3</div>
+      <div class="score-label">7 维度平均</div>
+    </div>
+    <div class="summary-card">
+      <div class="expert">AI 系统</div>
+      <div class="score">5.1</div>
+      <div class="score-label">8 维度平均</div>
+    </div>
+    <div class="summary-card">
+      <div class="expert">iOS 架构</div>
+      <div class="score">7.4</div>
+      <div class="score-label">8 维度平均</div>
+    </div>
+    <div class="summary-card">
+      <div class="expert">隐私安全</div>
+      <div class="score">5.0</div>
+      <div class="score-label">8 维度平均</div>
+    </div>
+    <div class="summary-card">
+      <div class="expert">产品设计</div>
+      <div class="score">5.6</div>
+      <div class="score-label">8 维度平均</div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <p><strong>总评：</strong>iOS 架构质量扎实（actor 模型、模块化、测试覆盖均为上乘），法律推理骨架（确定性状态机 + fail-closed + 反幻觉验证）方向正确；但存在 <strong>9 个 P0 级跨专家共识缺陷</strong>，涵盖向量维度不匹配致语义检索死代码、跨语言数据交换静默损坏、Python 端非 fail-closed、核心法律要件缺失、以及多处"假功能"和"承诺超实现"的产品问题。修复 P0 项后可达可商业化试点状态。</p>
+  </div>
+</section>
+
+<section class="section">
+  <h2>跨专家共识：P0 致命缺陷</h2>
+  <p style="color:var(--text-secondary);font-size:14px;margin-bottom:16px;">以下问题被两位及以上专家独立发现并交叉验证，按风险排序。</p>
+
+  <ul class="consensus-list">
+    <li>
+      <span class="severity-dot dot-p0"></span>
+      <div>
+        <strong>384/512 维向量不匹配 → iOS 语义检索恒为空</strong><br>
+        <span style="color:var(--text-secondary);">文档向量 384 维（MiniLM），查询端 512 维（BGE），<code>guard queryVec.count == dim</code> 恒真触发，RRF 融合从未执行。混合搜索名存实亡。</span><br>
+        <span class="expert-tag">AI系统</span><span class="expert-tag">iOS架构</span>
+        <span class="file-ref">LawIndex.swift:236</span>
+        <span class="file-ref">CoreMLEmbeddingProvider.swift:21</span>
+      </div>
+    </li>
+    <li>
+      <span class="severity-dot dot-p0"></span>
+      <div>
+        <strong>Verdict blocking 字段 Swift/Python 静默数据损坏</strong><br>
+        <span style="color:var(--text-secondary);">Swift toDict 输出字符串 kind，Python to_dict 输出布尔值。跨语言交换时：Swift 解码布尔抛 DecodingError，Python 解码布尔被归一化为 "none"——blocking 信息静默丢失。两处 "mirrors Python" 注释失实。</span><br>
+        <span class="expert-tag">iOS架构</span>
+        <span class="file-ref">Verdict.swift:71</span>
+        <span class="file-ref">verdict.py:123-124</span>
+      </div>
+    </li>
+    <li>
+      <span class="severity-dot dot-p0"></span>
+      <div>
+        <strong>Python _invoke_judge 无异常捕获 → 非 fail-closed</strong><br>
+        <span style="color:var(--text-secondary);">LLM 抛错直接炸穿 hear()。Swift 端 fail-closed 为 blocking 裁决，Python 端不成立——双端行为分裂。注释声称的 "never throws" 在 Python 端不成立。</span><br>
+        <span class="expert-tag">AI系统</span>
+        <span class="file-ref">court.py:238</span>
+      </div>
+    </li>
+    <li>
+      <span class="severity-dot dot-p0"></span>
+      <div>
+        <strong>验证失败但不 reject 的裁决可放行（假通过）</strong><br>
+        <span style="color:var(--text-secondary);">Court.swift:246-254 仅在 defaultToReject==true 时强制 refuted；而工资标准核实等 statute 的 defaultToReject 为 false——幻觉引文 + 默认放行 = 虚假批准。</span><br>
+        <span class="expert-tag">AI系统</span>
+        <span class="file-ref">Court.swift:246-254</span>
+        <span class="file-ref">LaborLawStatutes.swift:52,87,99</span>
+      </div>
+    </li>
+    <li>
+      <span class="severity-dot dot-p0"></span>
+      <div>
+        <strong>仲裁时效（调解仲裁法第27条）完全缺失</strong><br>
+        <span style="color:var(--text-secondary);">法条库无时效 statute。郭案欠薪自 2023年12月起，解除后一年内（2027年5月8日前）必须申请仲裁——工具在证据链审查中完全不含时效要件。沉默失败，比可见错误更危险。</span><br>
+        <span class="expert-tag">劳动法</span>
+        <span class="file-ref">LaborLawStatutes.swift</span>
+      </div>
+    </li>
+    <li>
+      <span class="severity-dot dot-p0"></span>
+      <div>
+        <strong>"行政处罚事先告知书"与"行政责令决定"概念混淆</strong><br>
+        <span style="color:var(--text-secondary);">additionalCompensation 要求的是第85条规定的"劳动行政部门责令限期支付"之责令决定，而非处罚程序的事先告知文书。以告知书充当责令证据，法律要件认定错误。</span><br>
+        <span class="expert-tag">劳动法</span>
+        <span class="file-ref">LaborLawStatutes.swift:94</span>
+      </div>
+    </li>
+    <li>
+      <span class="severity-dot dot-p0"></span>
+      <div>
+        <strong>郭案 CODE 测试硬编码工龄 5 年，实际应为 5年10月 → 6 个月</strong><br>
+        <span style="color:var(--text-secondary);">依第47条，参保 2020-07-01 至解除 2026-05-08 = 5年10个月余 → 6 个月补偿。硬编码 5 年低估 1 个月（7,550元），且测试只断言"跑通"不断言金额。</span><br>
+        <span class="expert-tag">劳动法</span>
+        <span class="file-ref">GuoYouyiCaseTests.swift:88-91</span>
+      </div>
+    </li>
+    <li>
+      <span class="severity-dot dot-p0"></span>
+      <div>
+        <strong>addFact 意图返回"已记录"但零写入 —— 假功能</strong><br>
+        <span style="color:var(--text-secondary);">用户被引导输入案情描述 → 命中 addFact → 系统回复"已记录"→ 零写入。且 computeSeverance 失败引导的句式恰好触发此空操作。信任炸弹。</span><br>
+        <span class="expert-tag">产品</span>
+        <span class="file-ref">IntentParser.swift:204-209</span>
+        <span class="file-ref">CourtViewModel.swift:208-211</span>
+      </div>
+    </li>
+    <li>
+      <span class="severity-dot dot-p0"></span>
+      <div>
+        <strong>引用验证声称"逐字核对原文"实际只查数字包含</strong><br>
+        <span style="color:var(--text-secondary);">verifySnippets 仅做 numbers 子集检查。无源文件时静默通过（allMatch 保持 true），制造虚假安全感。UI 信任横幅"引用内容必须与原文逐字一致"承诺远超实现。</span><br>
+        <span class="expert-tag">产品</span>
+        <span class="file-ref">CourtViewModel.swift:325-339</span>
+      </div>
+    </li>
+  </ul>
+</section>
+
+<section class="section">
+  <h2>各维度详细评分</h2>
+
+  <h3>劳动法专家评审（综合 5.3 / 10）</h3>
+  <div class="score-grid">
+    <div class="score-row"><span class="dim">法律要件完整性</span><span class="val score-lo">4</span></div>
+    <div class="score-row"><span class="dim">证据规则合理性</span><span class="val score-lo">4</span></div>
+    <div class="score-row"><span class="dim">经济补偿金计算</span><span class="val score-mid">6</span></div>
+    <div class="score-row"><span class="dim">法条引用准确性</span><span class="val score-hi">7</span></div>
+    <div class="score-row"><span class="dim">程序公正性</span><span class="val score-mid">5</span></div>
+    <div class="score-row"><span class="dim">混同用工判断</span><span class="val score-mid">6</span></div>
+    <div class="score-row"><span class="dim">整体法律风险</span><span class="val score-mid">5</span></div>
+  </div>
+  <div class="callout warn" style="margin-top:12px;">
+    <p><strong>关键发现：</strong>作为单案证据链审计工具，混同用工与被迫解除两个 statute 的案件化质量较高；作为通用劳动法规则引擎，仲裁时效缺失、第47条封顶/2008分段/最低工资兜底均未实现、证据门与举证责任分配矛盾是三个结构性问题。</p>
+  </div>
+
+  <h3 style="margin-top:24px;">AI/ML 系统专家评审（综合 5.1 / 10）</h3>
+  <div class="score-grid">
+    <div class="score-row"><span class="dim">LLM 回退链设计</span><span class="val score-hi">7</span></div>
+    <div class="score-row"><span class="dim">反幻觉机制</span><span class="val score-mid">5</span></div>
+    <div class="score-row"><span class="dim">混合搜索质量</span><span class="val score-mid">5</span></div>
+    <div class="score-row"><span class="dim">Prompt 工程</span><span class="val score-mid">6</span></div>
+    <div class="score-row"><span class="dim">RuleBasedLLM 局限性</span><span class="val score-lo">4</span></div>
+    <div class="score-row"><span class="dim">MLX on-device 方案</span><span class="val score-lo">4</span></div>
+    <div class="score-row"><span class="dim">Stall Detection</span><span class="val score-mid">5</span></div>
+    <div class="score-row"><span class="dim">Python/iOS 双实现一致性</span><span class="val score-mid">5</span></div>
+  </div>
+  <div class="callout warn" style="margin-top:12px;">
+    <p><strong>关键发现：</strong>架构骨架（确定性状态机 + fail-closed + 三层解析）正确，但 0.5B 模型能力严重不足（数字命中率仅 1/3~3/4）、子串验证可被复读绕过、FailSafeLLM 无超时/质量门/熔断、case data 无定界注入风险。专家提出了三层反幻觉 v2 方案（锚点解析引用 → 数字蕴含校验 → 独立盲审交叉验证）。</p>
+  </div>
+
+  <h3 style="margin-top:24px;">iOS 架构专家评审（综合 7.4 / 10）</h3>
+  <div class="score-grid">
+    <div class="score-row"><span class="dim">并发模型设计</span><span class="val score-hi">8</span></div>
+    <div class="score-row"><span class="dim">错误处理策略</span><span class="val score-hi">7.5</span></div>
+    <div class="score-row"><span class="dim">测试覆盖质量</span><span class="val score-hi">8</span></div>
+    <div class="score-row"><span class="dim">内存管理</span><span class="val score-hi">7</span></div>
+    <div class="score-row"><span class="dim">API 设计一致性</span><span class="val score-mid">6</span></div>
+    <div class="score-row"><span class="dim">Codable 实现质量</span><span class="val score-hi">8</span></div>
+    <div class="score-row"><span class="dim">代码组织与模块化</span><span class="val score-hi">8.5</span></div>
+    <div class="score-row"><span class="dim">性能关键路径</span><span class="val score-mid">6.5</span></div>
+  </div>
+  <div class="callout" style="margin-top:12px;">
+    <p><strong>关键发现：</strong>整体质量高于平均水平。actor 布局正确、依赖方向严格单向、测试 129 例覆盖扎实。Verdict blocking 双端不一致（2 行修复，零测试破坏）、LawStore @unchecked Sendable 数据竞争隐患（建议改为不可变 let 存储）、法条搜索 11K chunk 每查重新分词（预计算缓存即可解决）、PDF 160MB 内存尖峰是主要问题。</p>
+  </div>
+
+  <h3 style="margin-top:24px;">隐私安全专家评审（综合 5.0 / 10）</h3>
+  <div class="score-grid">
+    <div class="score-row"><span class="dim">端侧隐私声明真实性</span><span class="val score-lo">4</span></div>
+    <div class="score-row"><span class="dim">敏感数据处理</span><span class="val score-lo">3</span></div>
+    <div class="score-row"><span class="dim">MLX 模型安全（供应链）</span><span class="val score-lo">3</span></div>
+    <div class="score-row"><span class="dim">数据隔离</span><span class="val score-lo">4</span></div>
+    <div class="score-row"><span class="dim">文件导入安全</span><span class="val score-hi">8</span></div>
+    <div class="score-row"><span class="dim">双平台差异</span><span class="val score-mid">5</span></div>
+    <div class="score-row"><span class="dim">法律知识库更新</span><span class="val score-hi">9</span></div>
+    <div class="score-row"><span class="dim">GDPR / 个保法合规</span><span class="val score-lo">3</span></div>
+  </div>
+  <div class="callout warn" style="margin-top:12px;">
+    <p><strong>关键发现：</strong>iOS 端"数据不出设备"核心事实为真（全仓无 URLSession/遥测 SDK），但 README"零流量"与 500MB 模型下载事实矛盾。案件数据明文 JSON 落盘 + iCloud 备份无排除、MLX 模型无完整性校验 + 依赖 branch:main、隐私保护管理器是纯打印的"假合规层"。7 项漏洞中 1 项高危（依赖供应链）、6 项中危。</p>
+  </div>
+
+  <h3 style="margin-top:24px;">法律科技产品专家评审（综合 5.6 / 10）</h3>
+  <div class="score-grid">
+    <div class="score-row"><span class="dim">目标用户定位</span><span class="val score-mid">6</span></div>
+    <div class="score-row"><span class="dim">核心工作流设计</span><span class="val score-mid">6</span></div>
+    <div class="score-row"><span class="dim">Goal-Driven 架构</span><span class="val score-mid">6.5</span></div>
+    <div class="score-row"><span class="dim">自然语言交互</span><span class="val score-mid">5.5</span></div>
+    <div class="score-row"><span class="dim">输出可操作性</span><span class="val score-mid">6.5</span></div>
+    <div class="score-row"><span class="dim">fallbackHint 体验</span><span class="val score-lo">4.5</span></div>
+    <div class="score-row"><span class="dim">与传统工具差异化</span><span class="val score-hi">7</span></div>
+    <div class="score-row"><span class="dim">商业化可行性</span><span class="val score-mid">5</span></div>
+  </div>
+  <div class="callout warn" style="margin-top:12px;">
+    <p><strong>关键发现：</strong>差异化真实且可防守（端侧隐私 + 引用可验证 + 人在环上 + 零边际成本），但 fallback 模式是"双重空心"——全面复核无缺口产出 + 目录生成被模板过滤误伤。addFact 假功能、引用验证口径与承诺脱节、导出功能 UI 半成品是三个产品断点。专家建议以"法援机构与小微律所"为 B2B 主定位，C 端劳动者为次场景。</p>
+  </div>
+</section>
+
+<section class="section">
+  <h2>修复路线图</h2>
+
+  <div class="roadmap-step">
+    <div class="roadmap-phase">P0 立即</div>
+    <div class="roadmap-body">
+      <h4>统一 Verdict blocking wire 契约</h4>
+      <p>改 Python to_dict 输出字符串 kind（2 行），修正 "mirrors Python" 失实注释。修复跨语言静默数据损坏。</p>
+    </div>
+  </div>
+  <div class="roadmap-step">
+    <div class="roadmap-phase">P0 立即</div>
+    <div class="roadmap-body">
+      <h4>修复 384/512 向量维度 → 统一为同一 embedding 模型</h4>
+      <p>用 BGE-small-zh 重生成 512 维文档向量，或查询端改用 384 维 MiniLM CoreML 模型。恢复 iOS 语义检索。</p>
+    </div>
+  </div>
+  <div class="roadmap-step">
+    <div class="roadmap-phase">P0 立即</div>
+    <div class="roadmap-body">
+      <h4>Python _invoke_judge 加 try/except + 验证失败一律强制拒绝</h4>
+      <p>court.py:238 包裹异常捕获返回 blocking 裁决；Court.swift:246-254 改为无论 defaultToReject 均强制 refuted（假通过修复）。</p>
+    </div>
+  </div>
+  <div class="roadmap-step">
+    <div class="roadmap-phase">P0 立即</div>
+    <div class="roadmap-body">
+      <h4>补仲裁时效 statute + 修复告知书/责令决定混淆 + 修正郭案工龄</h4>
+      <p>新增"申请期限/仲裁时效"statute（调解仲裁法第27条）入 gapDetectionBook；additionalCompensation 的 requiredEvidence 改为"劳动行政部门责令限期支付决定"；GuoYouyiCaseTests.swift 工龄 5→5.83 年并断言金额。</p>
+    </div>
+  </div>
+  <div class="roadmap-step">
+    <div class="roadmap-phase">P0 立即</div>
+    <div class="roadmap-body">
+      <h4>激活 fallback 兜底产出 + 修复 addFact 假功能</h4>
+      <p>激活 findCommonGaps 作为 fallback 模式确定性缺口检查（加内容回退搜索 + 去重）；addFact 接入真实 fact 存储或删除该意图并改引导文案；模板过滤只过滤 gap findings、不过滤 catalog 内容（修复双重空心）。</p>
+    </div>
+  </div>
+
+  <div class="roadmap-step">
+    <div class="roadmap-phase">P1 短期</div>
+    <div class="roadmap-body">
+      <h4>LawStore 不可变化 + 法条搜索预计算缓存 + PDF 逐页渲染</h4>
+      <p>LawStore 改 throwing init + 全部 let 属性消除 @unchecked Sendable；NLTokenizer 分词结果预计算缓存（内存 ~2MB，搜索 100ms→1ms）；PDF renderImages 逐页渲染释放避免 160MB 尖峰。</p>
+    </div>
+  </div>
+  <div class="roadmap-step">
+    <div class="roadmap-phase">P1 短期</div>
+    <div class="roadmap-body">
+      <h4>MLX 模型固定 revision + 依赖锁定 + 案件文件加密</h4>
+      <p>模型固定 commit hash + 下载后 SHA256 校验；project.yml 依赖锁定精确 tag/commit；PersistenceController 加 NSFileProtectionComplete + isExcludedFromBackup。</p>
+    </div>
+  </div>
+  <div class="roadmap-step">
+    <div class="roadmap-phase">P1 短期</div>
+    <div class="roadmap-body">
+      <h4>补 Court.hear 与 applyVerdicts 直接测试 + 模型下载闭环</h4>
+      <p>补充 maxRounds/stall/blocked/refuted/not_refuted 全覆盖测试；实现 MLX 模型 WiFi 下载入口（含进度/断点续传）。</p>
+    </div>
+  </div>
+
+  <div class="roadmap-step">
+    <div class="roadmap-phase">P2 中期</div>
+    <div class="roadmap-body">
+      <h4>证据门按举证责任分层 + 经济补偿金计算分支完整化</h4>
+      <p>引入 EvidenceRequirement 结构体（holder + onMissing + alternatives），Court 按 worker/employer/thirdParty 三分支处理；补第47条封顶/兜底/2008分段/工龄合并。</p>
+    </div>
+  </div>
+  <div class="roadmap-step">
+    <div class="roadmap-phase">P2 中期</div>
+    <div class="roadmap-body">
+      <h4>反幻觉 v2 + 三阶段盲审 + 法律要件扩展</h4>
+      <p>锚点解析引用替换子串验证；数字蕴含校验；独立第二审交叉验证。补双倍工资/加班费/年休假/违法解除 statute。建立真实合规机制（同意流程、隐私政策、PIPIA 记录）。</p>
+    </div>
+  </div>
+  <div class="roadmap-step">
+    <div class="roadmap-phase">P2 中期</div>
+    <div class="roadmap-body">
+      <h4>模型升级至 2-4B 级 + 引用验证口径对齐 + 导出完整报告</h4>
+      <p>Qwen3-4B 4-bit（~2GB）；做真·片段核验替代数字包含检查；ExcelExport 的 exportFullReport/exportGaps UI 可达。</p>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <h2>专家追问精华</h2>
+  <table class="finding-table">
+    <thead>
+      <tr><th>追问主题</th><th>专家结论</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td data-label="主题"><strong>最先修哪个法律问题？</strong></td>
+        <td data-label="结论">仲裁时效——杀伤范围最大（可杀死整案）、失败模式最隐蔽（无声失败）、修复杠杆最高（新增一部 statute 即可，不碰引擎逻辑）</td>
+      </tr>
+      <tr>
+        <td data-label="主题"><strong>Verdict blocking 统一为哪种格式？</strong></td>
+        <td data-label="结论">统一为字符串 kind，改 Python to_dict 两行、零测试破坏。字符串已是全仓事实标准（LLM 契约 + 两端解析器 + 9 处测试 mock）</td>
+      </tr>
+      <tr>
+        <td data-label="主题"><strong>LawStore 加锁 vs 不可变化？</strong></td>
+        <td data-label="结论">改为全部 let + throwing init——零成本（~100ns vs 100ms+ 分词）、删掉 @unchecked Sendable、编译器可验证</td>
+      </tr>
+      <tr>
+        <td data-label="主题"><strong>如何区分真实引用与 prompt 复读？</strong></td>
+        <td data-label="结论">三层反幻觉 v2：锚点解析引用（LLM 输出指针而非文本）+ 数字蕴含校验（确定性免费）+ 独立盲审交叉验证</td>
+      </tr>
+      <tr>
+        <td data-label="主题"><strong>findCommonGaps 能替代 LLM 吗？</strong></td>
+        <td data-label="结论">是地板不是天花板——激活作为 fallback 兜底（免费且正确方向），但不能替代 LLM。需加内容回退搜索、去重、严重度分级、接入 executeGoalStep</td>
+      </tr>
+      <tr>
+        <td data-label="主题"><strong>混同用工必须援引公司法吗？</strong></td>
+        <td data-label="结论">推荐双轨主张：劳动法路径（用工事实认定）主攻 + 公司法第23条第2款作规范锚点。对郭案，以用工混同为主更稳妥</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="section">
+  <h2>专家团声明</h2>
+  <p style="font-size:13px;color:var(--text-muted);line-height:1.6;">
+    本报告由五位独立专家基于 2026-08-11 的代码仓状态（commit 1a5cc46，分支 feature/hardlaw-ios）出具。每位专家独立评审指定文件集，评价仅代表其专业判断。报告中的代码行号引用以评审当日代码为准，可能因后续提交发生偏移。法律专家评审不构成法律意见；安全专家评审不构成渗透测试报告。专家团与项目无利益关系。
+  </p>
+</section>
+
+</div>
