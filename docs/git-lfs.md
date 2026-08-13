@@ -17,6 +17,9 @@
 
 - `.gitattributes` 已将 `*.a` / `*.bin` / `*.pdiparams` / `*.pdmodel` / `*.mp4` 声明为 LFS 跟踪。
   **今后新添加的此类文件**（以及 `git add --renormalize .` 后重新暂存的文件）会以 LFS 指针存储。
+- **例外：`.mlpackage` 内部永不走 LFS**（`**/*.mlpackage/** !filter !diff !merge`）。
+  Xcode 的 `coremlcompiler` 编译 `.mlpackage → .mlmodelc` 需要真实权重文件，
+  权重一旦是指针会导致编译失败（曾发生过，见提交 43f9a3f）。
 - 历史大文件**不做 `git lfs migrate` 重写**：迁移会重写已推送提交（`80a1d15` 之前的远端历史），
   导致本地与 `origin` 分叉，后续 push 必须 force，风险不可逆。
 

@@ -1,8 +1,12 @@
 # Git LFS — binary/large artifacts
 # New files matching these patterns are stored as LFS pointers.
 # NOTE: already-committed blobs are NOT retroactively converted; see docs/git-lfs.md.
+# NOTE: .mlpackage internals must NEVER be LFS — Xcode's coremlcompiler needs
+# real weight files to compile .mlpackage → .mlmodelc (last-match-wins below).
 *.a        filter=lfs diff=lfs merge=lfs -text
 *.bin      filter=lfs diff=lfs merge=lfs -text
 *.pdiparams filter=lfs diff=lfs merge=lfs -text
 *.pdmodel  filter=lfs diff=lfs merge=lfs -text
 *.mp4      filter=lfs diff=lfs merge=lfs -text
+*.mlpackage/**/*.bin  !filter !diff !merge
+**/*.mlpackage/**     !filter !diff !merge
