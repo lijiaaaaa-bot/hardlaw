@@ -39,13 +39,13 @@ public enum DocumentClassifier {
         (.salaryTable, ["工资表", "工资单", "薪资表", "工资明细", "薪酬"], ["工资表", "工资单", "姓名", "应发", "实发", "基本工资"], ["应发工资", "实发工资", "基本工资", "岗位工资"]),
         (.socialInsurance, ["参保证明", "社保", "社会保险", "养老", "医保"], ["参保证明", "社会保险", "参保", "缴费基数", "个人权益"], ["参保单位", "缴费基数", "参保人"]),
         (.businessRegistration, ["工商登记", "营业执照", "企业信息", "天眼查", "企查查"], ["统一社会信用代码", "法定代表人", "注册资本", "经营范围"], ["统一社会信用代码", "法定代表人"]),
-        (.personnelOverlap, ["人事混同", "人员混同"], ["人事", "混同", "人员交叉", "同时任职"], ["混同用工", "人员"]),
-        (.financialOverlap, ["财务混同", "资金混同"], ["财务", "混同", "资金"], ["混同", "资金"]),
+        (.personnelOverlap, ["人事混同", "人员混同"], ["人事", "混同", "人员交叉", "同时任职"], ["混同用工", "人员混同", "人员交叉", "同时任职"]),
+        (.financialOverlap, ["财务混同", "资金混同", "发票"], ["财务", "混同", "资金"], ["混同", "资金"]),
         (.terminationNotice, ["被迫解除", "解除劳动关系", "解除通知"], ["被迫解除", "解除劳动关系", "通知书", "劳动合同法"], ["第38条", "被迫", "解除"]),
         (.emsReceipt, ["EMS", "交寄单", "邮寄凭证", "快递单", "邮寄"], ["EMS", "交寄", "快递", "邮件号码", "寄件人", "收件人"], ["EMS", "交寄", "快递"]),
         (.dismissalNotice, ["解除通知", "终止通知", "辞退", "开除"], ["解除", "终止", "通知", "辞退"], ["解除", "终止"]),
         (.attendanceRecord, ["打卡", "考勤", "出勤", "签到"], ["打卡", "考勤", "出勤", "签到", "上下班"], ["打卡", "考勤"]),
-        (.workHistory, ["工龄", "工作年限", "工作证明", "入职"], ["工龄", "工作年限", "入职", "参加工作"], ["工龄", "年限", "入职时间"]),
+        (.workHistory, ["工龄", "工作年限", "工作证明", "入职", "建造师", "职称", "聘任"], ["工龄", "工作年限", "入职", "参加工作"], ["工龄", "年限", "入职时间"]),
         (.annualLeave, ["年休假", "年假", "休假", "请假"], ["年休假", "年假", "休假审批", "请假"], ["年休假", "休假"]),
         (.wageStandard, ["工资标准", "月工资", "薪资标准"], ["月工资", "工资标准", "薪资"], ["月工资", "工资标准"]),
         (.entryDate, ["入职日期", "入职时间", "报到"], ["入职日期", "入职时间", "报到"], ["入职"]),
@@ -55,6 +55,7 @@ public enum DocumentClassifier {
         (.penaltyNotice, ["行政处罚", "行政处理", "劳动监察"], ["行政处罚", "行政处理", "事先告知", "决定书"], ["行政处罚", "行政处理"]),
         (.arrearsStatement, ["欠薪", "拖欠", "未发放", "未发工资", "欠发工资"], ["拖欠", "欠发", "未发放", "欠薪"], ["未发放", "欠薪", "拖欠"]),
         (.chatRecord, ["微信", "聊天", "钉钉", "短信"], ["微信", "聊天记录", "钉钉", "消息"], ["聊天", "消息"]),
+        (.other, ["会议纪要", "证书", "补充协议", "付款单据"], ["会议纪要"], ["会议纪要"]),
     ]
 
     // MARK: - Public API
@@ -70,10 +71,10 @@ public enum DocumentClassifier {
         for (category, filenamePats, firstLinePats, fullTextPats) in rules {
             var score = 0
 
-            // Filename hits ×3
+            // Filename hits ×3 (with targeted exceptions for over-broad keywords)
             for pat in filenamePats {
                 if fileName.localizedCaseInsensitiveContains(pat) {
-                    score += 3
+                    score += filenameWeight(category: category, pattern: pat)
                 }
             }
 
@@ -111,7 +112,9 @@ public enum DocumentClassifier {
         for (category, filenamePats, firstLinePats, fullTextPats) in rules {
             var score = 0
             for pat in filenamePats {
-                if fileName.localizedCaseInsensitiveContains(pat) { score += 3 }
+                if fileName.localizedCaseInsensitiveContains(pat) {
+                    score += filenameWeight(category: category, pattern: pat)
+                }
             }
             for pat in firstLinePats {
                 if firstLine.localizedCaseInsensitiveContains(pat) { score += 2 }
@@ -136,6 +139,19 @@ public enum DocumentClassifier {
             top.insert(corrected, at: 0)
         }
         return top
+    }
+
+    // MARK: - Scoring helpers
+
+    /// Bare "微信" is common in WeChat-saved image filenames (e.g. "微信图片_xxx.jpg"),
+    /// which are often photos of wage tables or other non-chat documents. Lower its
+    /// filename weight so it cannot outrank a real content signal; stronger chat
+    /// filename markers such as "聊天" still keep the full ×3 weight.
+    private static func filenameWeight(category: EvidenceCategory, pattern: String) -> Int {
+        if category == .chatRecord && pattern == "微信" {
+            return 1
+        }
+        return 3
     }
 
     // MARK: - Termination disambiguation
