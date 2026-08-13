@@ -204,16 +204,28 @@ public actor Court {
     /// 代通知金(N+1, 第40条)不能兼得。若本步批准其中一个,而先前已批准另一个,
     /// 强制 reconcile —— 把本步 verdict 改为 refuted + 互斥 finding,
     /// 不让 LLM 同时主张两个互斥请求权。
+    ///
+    /// 表驱动互斥组(可扩展):每组内的请求权互斥,批准其中一个后,
+    /// 其余再被批准即确定性拒绝。法律依据:
+    /// - 违法解除赔偿金(2N,87条)与 经济补偿金(N,47条)不能兼得
+    /// - 违法解除赔偿金(2N,87条)与 代通知金(N+1,40条)不能兼得
+    ///   经济补偿 N 与 代通知金 N+1 不互斥(40条合法解除 = N+1)。
+    private static let statuteExclusionGroups: [(statute: String, excludes: String, note: String)] = [
+        // 2N 与 N 互斥(87条:赔偿金与经济补偿不能兼得)
+        ("违法解除赔偿金", "经济补偿金计算",
+         "第87条违法解除赔偿(2N)与第47条经济补偿(N)不能兼得，已拒绝后者"),
+        ("经济补偿金计算", "违法解除赔偿金",
+         "第47条经济补偿(N)与第87条违法解除赔偿(2N)不能兼得，已拒绝后者"),
+        // 2N 与 N+1 互斥(87条 vs 40条:违法解除与合法解除路径互斥)
+        ("违法解除赔偿金", "代通知金",
+         "第87条违法解除赔偿(2N)与第40条代通知金(N+1)不能兼得，已拒绝后者"),
+        ("代通知金", "违法解除赔偿金",
+         "第40条代通知金(N+1)与第87条违法解除赔偿(2N)不能兼得，已拒绝后者"),
+    ]
+
     private func enforceStatuteExclusion(verdict: Verdict, ctx: CaseContext, stepStatutes: Set<String>) -> Verdict {
-        // Mutually exclusive pairs: statute name → the statute it excludes.
-        let exclusions: [(statute: String, excludes: String, note: String)] = [
-            ("违法解除赔偿金", "代通知金",
-             "第87条违法解除赔偿(2N)与第40条代通知金(N+1)不能兼得，已拒绝后者"),
-            ("代通知金", "违法解除赔偿金",
-             "第40条代通知金(N+1)与第87条违法解除赔偿(2N)不能兼得，已拒绝后者"),
-        ]
         let approved = Set(ctx.approvedStatutes)
-        for pair in exclusions {
+        for pair in Self.statuteExclusionGroups {
             // This step approved `pair.statute` and a prior step already approved
             // its mutually-exclusive counterpart — reconcile deterministically.
             if stepStatutes.contains(pair.statute) && approved.contains(pair.excludes) {

@@ -105,6 +105,11 @@ public enum CompensationCalculator {
         return baseSalary * months
     }
 
+    /// 经济补偿金(无社平输入): 不触发高薪封顶,按实际月薪与年限计算。
+    public static func severanceAmount(monthlySalary: Double, years: Double) -> Double {
+        monthlySalary * severanceMonths(years: years)
+    }
+
     // MARK: - 违法解除赔偿(劳动合同法第87条)
 
     /// 违法解除赔偿金 = 经济补偿 × 2(2N)。

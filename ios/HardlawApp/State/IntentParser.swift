@@ -1,4 +1,5 @@
 import Foundation
+import HardlawKit
 
 // MARK: - Intent Parser
 
@@ -50,6 +51,17 @@ public enum IntentParser {
             return ParsedIntent(kind: .computeSeverance)
         }
 
+        // Overtime calculation
+        if lower.contains("加班费") || lower.contains("加班工资") || lower.contains("算加班") {
+            return ParsedIntent(kind: .computeOvertime)
+        }
+
+        // Annual leave calculation
+        if lower.contains("年休假") || lower.contains("年假工资") || lower.contains("算年假")
+            || lower.contains("未休年假") {
+            return ParsedIntent(kind: .computeAnnualLeave)
+        }
+
         // Citation verification
         if lower.contains("验证引用") || lower.contains("核对引用") || lower.contains("出处") {
             return ParsedIntent(kind: .verifyCitations)
@@ -85,6 +97,8 @@ public enum IntentKind: String, Sendable {
     case verifyCitations       // local only
     case checkConsistency      // local only
     case computeSeverance      // local only
+    case computeOvertime       // local only
+    case computeAnnualLeave    // local only
     case fullReview            // needs LLM
     case addFact
     case unparsed
@@ -100,7 +114,8 @@ public extension IntentKind {
     var backend: ExecutionBackend {
         switch self {
         case .importEvidence, .addFact, .unparsed: return .local
-        case .detectGaps, .verifyCitations, .checkConsistency, .computeSeverance:
+        case .detectGaps, .verifyCitations, .checkConsistency, .computeSeverance,
+             .computeOvertime, .computeAnnualLeave:
             return .local
         case .generateCatalog, .verifyClaim, .fullReview:
             return .llm
@@ -187,6 +202,12 @@ public struct IntentHandler {
         case .computeSeverance:
             return computeSeverance(caseFile)
 
+        case .computeOvertime:
+            return computeOvertime(caseFile)
+
+        case .computeAnnualLeave:
+            return computeAnnualLeave(caseFile)
+
         case .verifyCitations:
             return IntentResult(
                 action: .runAI,
@@ -234,23 +255,15 @@ public struct IntentHandler {
         let years = extractWorkYears(from: caseFile)
 
         if let wage, let years {
-            // 《劳动合同法》第47条：每满一年支付一个月工资；
-            // 六个月以上不满一年的按一年计算；不满六个月的支付半个月工资。
-            let fullYears = Int(floor(years))
-            let remainder = years - Double(fullYears)
-            // 每满一年支付一个月工资；六个月以上不满一年按一年计算；
-            // 不满六个月支付半个月工资（如 2 年 4 个月 → 2.5 个月工资）
-            let compensatedYears: Double
-            if remainder >= 0.5 { compensatedYears = Double(fullYears + 1) }
-            else if remainder > 0 { compensatedYears = Double(fullYears) + 0.5 }
-            else { compensatedYears = Double(fullYears) }
-            let amount = wage * compensatedYears
+            // 委托 CompensationCalculator:第47条月数(无社平输入,不触发高薪封顶)
+            let months = CompensationCalculator.severanceMonths(years: years)
+            let amount = CompensationCalculator.severanceAmount(monthlySalary: wage, years: years)
             let detail = years.truncatingRemainder(dividingBy: 1) == 0
-                ? "满 \(fullYears) 年 → \(format(compensatedYears)) 个月工资"
-                : "\(fullYears) 年 + \(String(format: "%.1f", remainder * 12)) 个月 → 按 \(format(compensatedYears)) 个月工资计算"
+                ? "满 \(Int(years)) 年 → \(format(months)) 个月工资"
+                : "按 \(format(months)) 个月工资计算"
             return IntentResult(
                 action: .none,
-                message: "经济补偿金 = 月工资 \(format(wage)) 元 × \(format(compensatedYears)) 个月 = \(format(amount)) 元（依据《劳动合同法》第47条：\(detail)）",
+                message: "经济补偿金 = 月工资 \(format(wage)) 元 × \(format(months)) 个月 = \(format(amount)) 元（依据《劳动合同法》第47条：\(detail)）",
                 success: true
             )
         }
@@ -273,6 +286,74 @@ public struct IntentHandler {
             message: "经济补偿金：未找到月工资和工作年限。补充工资表与劳动合同，或输入如「月工资 8000 元，工作 3 年」。",
             success: false
         )
+    }
+
+    /// 加班费计算(劳动法第44条)。从案件提取月工资与加班小时数/类型。
+    private static func computeOvertime(_ caseFile: CaseFile) -> IntentResult {
+        guard let wage = extractMonthlyWage(from: caseFile) else {
+            return IntentResult(
+                action: .none,
+                message: "加班费：未找到月工资标准。补充工资表/劳动合同，或输入如「月工资 8000 元」。",
+                success: false)
+        }
+        // 从请求文本解析加班类型与小时数(如「工作日加班 10 小时」)
+        let texts = allTexts(from: caseFile)
+        var totalText = texts.joined(separator: "\n")
+
+        var kind: OvertimeKind = .workday
+        var hours: Double? = nil
+        if totalText.contains("法定") || totalText.contains("节假日") {
+            kind = .statutoryHoliday
+        } else if totalText.contains("休息日") || totalText.contains("周末") || totalText.contains("周六") || totalText.contains("周日") {
+            kind = .restDay
+        }
+        // 加班小时数:「X 小时」/「X h」
+        for text in texts {
+            if let v = captureNumber(in: text, pattern: #"(\d+(?:\.\d+)?)\s*(?:小时|小时加班|h)"#) {
+                hours = v
+                break
+            }
+        }
+        guard let hours else {
+            let kindName = kind == .statutoryHoliday ? "法定节假日" : (kind == .restDay ? "休息日" : "工作日")
+            return IntentResult(
+                action: .none,
+                message: "加班费：已提取月工资 \(format(wage)) 元，但未找到加班小时数。输入如「工作日加班 10 小时」或「休息日加班 8 小时」。",
+                success: false)
+        }
+        let amount = CompensationCalculator.overtimePay(monthlySalary: wage, hours: hours, kind: kind)
+        let kindName = kind == .statutoryHoliday ? "法定节假日" : (kind == .restDay ? "休息日" : "工作日")
+        let rate = kind == .statutoryHoliday ? "300%" : (kind == .restDay ? "200%" : "150%")
+        return IntentResult(
+            action: .none,
+            message: "加班费 = \(kindName)加班 \(format(hours)) 小时 × 时薪 \(format(wage / CompensationCalculator.monthlyWorkingDays / CompensationCalculator.dailyWorkingHours)) 元 × \(rate) = \(format(amount)) 元（依据《劳动法》第44条）",
+            success: true)
+    }
+
+    /// 年休假计算(职工带薪年休假条例第3/5条)。提取工龄与未休天数。
+    private static func computeAnnualLeave(_ caseFile: CaseFile) -> IntentResult {
+        let years = extractWorkYears(from: caseFile)
+        let wage = extractMonthlyWage(from: caseFile)
+        guard let years else {
+            return IntentResult(
+                action: .none,
+                message: "年休假：未确认工作年限。补充合同或输入如「工作 12 年」。",
+                success: false)
+        }
+        let days = CompensationCalculator.annualLeaveDays(serviceYears: years)
+        var msg = "累计工作年限 \(format(years)) 年 → 年休假 \(days) 天（依据《职工带薪年休假条例》第3条）"
+        if let wage {
+            let texts = allTexts(from: caseFile).joined(separator: "\n")
+            var unused = days
+            if let v = captureNumber(in: texts, pattern: #"未休\s*(\d+(?:\.\d+)?)\s*天"#) {
+                unused = Int(v.rounded()) // 取整,避免 Int() 对小数 crash
+            }
+            let pay = CompensationCalculator.unusedAnnualLeavePay(monthlySalary: wage, unusedDays: unused)
+            msg += "；未休 \(unused) 天应得额外 \(format(pay)) 元（日工资×200%×未休天数，条例第5条）"
+        } else {
+            msg += "。补充月工资后可计算未休年假工资。"
+        }
+        return IntentResult(action: .none, message: msg, success: true)
     }
 
     /// 从案件证据/请求中提取月工资标准（元/月）。
