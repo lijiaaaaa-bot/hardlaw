@@ -7,9 +7,9 @@
 | Layer | Detail |
 |-------|--------|
 | **Protocol** | `EmbeddingProvider` in `ios/HardlawKit/Sources/LegalKnowledge/EmbeddingProvider.swift` — 2 methods: `dimension: Int` and `embed(_ text: String) async throws -> [Float]` |
-| **Consumer** | `LawIndex` in `ios/HardlawKit/Sources/LegalKnowledge/LawIndex.swift` — loads pre-computed 384-dim document vectors from `laws_vectors.bin`, uses provider to embed queries, merges via RRF |
-| **Python model** | `paraphrase-multilingual-MiniLM-L12-v2` (384-dim, SentenceTransformers) — noted in code as having "mediocre Chinese performance" |
-| **Vector data** | 11,157 pre-computed vectors at 384 dimensions, stored as float32 binary in `HardlawKit/Resources/LegalKnowledge/laws_vectors.bin` |
+| **Consumer** | `LawIndex` in `ios/HardlawKit/Sources/LegalKnowledge/LawIndex.swift` — loads pre-computed 512-dim document vectors from `laws_vectors.bin`, uses provider to embed queries, merges via RRF |
+| **Python model** | `BAAI/bge-small-zh-v1.5` (512-dim, SentenceTransformers) — Chinese-native, replaces MiniLM |
+| **Vector data** | 11,724 pre-computed vectors at 512 dimensions, stored as float32 binary in `ios/HardlawApp/LegalKnowledge/laws_vectors.bin` (single copy; Kit/Resources copy removed in `cba13d4`) |
 | **MLX infra** | `MLXLLM.swift` exists as a stub (all code behind `#if false`). `project.yml` depends on `mlx-community/mlx-libraries` package |
 | **No provider** | No concrete `EmbeddingProvider` implementation exists — `LawIndex.search()` falls back to keyword-only |
 
@@ -219,7 +219,7 @@ from sentence_transformers import SentenceTransformer
 import numpy as np
 
 MODEL_ID = "BAAI/bge-small-zh-v1.5"
-OUTPUT_PATH = "ios/HardlawKit/Resources/bge-small-zh-v1.5.mlpackage"
+OUTPUT_PATH = "ios/HardlawApp/bge-small-zh-v1.5.mlpackage"
 MAX_SEQ_LEN = 512
 
 def main():
@@ -461,8 +461,8 @@ actor MLXEmbeddingProvider: EmbeddingProvider {
 | File | Change | Why |
 |------|--------|-----|
 | `scripts/export_for_ios.py` | Switch model from `paraphrase-multilingual-MiniLM-L12-v2` to `BAAI/bge-small-zh-v1.5` | New embedding space; regenerate all 11,157 document vectors |
-| `ios/HardlawKit/Resources/LegalKnowledge/laws_vectors.bin` | Replace with new vectors (512-dim) | Dimension change from 384→512 |
-| `ios/HardlawKit/Sources/LegalKnowledge/LawIndex.swift` | Update comments that reference 384-dim, MiniLM, and "mediocre Chinese performance" | Documentation accuracy |
+| `ios/HardlawApp/LegalKnowledge/laws_vectors.bin` | Single 512-dim copy (BGE-small-zh-v1.5) | Done in `cba13d4`; Kit/Resources duplicate removed |
+| `ios/HardlawKit/Sources/LegalKnowledge/LawIndex.swift` | Comments now reference 512-dim BGE; runtime dimension-mismatch guard throws `dimensionMismatch` | Done |
 | `ios/project.yml` | Add `swift-transformers` package dependency (CoreML path) | Tokenizer requirement |
 
 ### No change needed

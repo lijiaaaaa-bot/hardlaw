@@ -33,10 +33,15 @@ jobs:
       - name: Build & test
         run: |
           cd ios
+          # Exclude material/device-dependent suites: they need real evidence files
+          # (test-resources/raw-evidence was removed from git) or on-device PaddleOCR,
+          # so they would fail/empty-run in CI. Pure-logic suites run in full.
           xcodebuild test -project Hardlaw.xcodeproj -scheme HardlawKit \
             -destination "platform=iOS Simulator,name=$DEVICE" \
             -derivedDataPath ../.derived \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            -skip-testing:HardlawKitTests/DoubaoBaselineTests \
+            -skip-testing:HardlawKitTests/RealEvidenceEndToEndTests
 
       - name: Upload test results on failure
         if: failure()
