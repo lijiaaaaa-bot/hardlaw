@@ -26,3 +26,6 @@ ios/Models/*.mlpackage
 
 # Reasonix runtime state (session/task snapshots)
 .reasonix/
+
+# Local MCP config (machine-specific absolute paths)
+.mcp.json
