@@ -74,6 +74,8 @@ targets:
     settings:
       base:
         DEVELOPMENT_TEAM: SP272623JD
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
         SWIFT_OBJC_BRIDGING_HEADER: HardlawApp/Services/PaddleOCR-Bridging-Header.h
         HEADER_SEARCH_PATHS:
           - $(PROJECT_DIR)/HardlawApp/PaddleOCR/include
