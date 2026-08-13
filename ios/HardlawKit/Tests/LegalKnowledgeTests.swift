@@ -167,6 +167,24 @@ final class LegalKnowledgeTests: XCTestCase {
             XCTFail("unexpected error: \(error)")
         }
     }
+
+    // MARK: - Duplicate chunk ID resilience
+
+    func testChunkMapHandlesDuplicateIDs() {
+        let first = LawChunk(
+            id: "劳动法/第三十一条", lawID: "劳动法", lawTitle: "劳动法",
+            category: "社会法", articleNum: "第三十一条", heading: "", text: "first"
+        )
+        let second = LawChunk(
+            id: "劳动法/第三十一条", lawID: "劳动法", lawTitle: "劳动法",
+            category: "社会法", articleNum: "第三十一条", heading: "", text: "second"
+        )
+
+        // Must not trap — production once crashed here on duplicate IDs.
+        let map = LawIndex.buildChunkMap([first, second])
+        XCTAssertEqual(map.count, 1, "duplicate IDs collapse to a single entry")
+        XCTAssertEqual(map["劳动法/第三十一条"]?.text, "first", "first chunk wins on collision")
+    }
 }
 
 private struct StubEmbeddingProvider: EmbeddingProvider {

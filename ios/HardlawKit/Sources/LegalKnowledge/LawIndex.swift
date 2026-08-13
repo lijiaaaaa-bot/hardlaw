@@ -185,10 +185,9 @@ public final class LawIndex: @unchecked Sendable {
             }
         }
 
-        // Build chunk lookup map
-        let chunkMap = Dictionary(
-            uniqueKeysWithValues: store.chunks.map { ($0.id, $0) }
-        )
+        // Build chunk lookup map — tolerate duplicate IDs (keep the first)
+        // instead of trapping via `uniqueKeysWithValues:`.
+        let chunkMap = Self.buildChunkMap(store.chunks)
 
         // Keyword results (always available)
         let kwResults = store.searchKeyword(trimmed, limit: k * 3)
@@ -232,6 +231,13 @@ public final class LawIndex: @unchecked Sendable {
     }
 
     // MARK: - Semantic Search
+
+    /// Build an id → chunk lookup map, keeping the first chunk on duplicate
+    /// IDs. `Dictionary(uniqueKeysWithValues:)` traps on duplicates, which
+    /// crashed production search when law exports contained repeated chunk IDs.
+    internal static func buildChunkMap(_ chunks: [LawChunk]) -> [String: LawChunk] {
+        Dictionary(chunks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    }
 
     /// Brute-force inner product search over document vectors.
     ///
