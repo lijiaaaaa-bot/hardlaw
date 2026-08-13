@@ -29,6 +29,8 @@ targets:
     sources:
       - path: HardlawKit/Sources
       - path: HardlawKit/Vision
+    resources:
+      - path: HardlawKit/Resources/ClassifierRules
     dependencies:
       - package: mlx-swift-lm
         product: MLXLLM

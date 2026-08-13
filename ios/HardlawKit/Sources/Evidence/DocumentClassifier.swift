@@ -58,6 +58,77 @@ public enum DocumentClassifier {
         (.other, ["会议纪要", "证书", "补充协议", "付款单据"], ["会议纪要"], ["会议纪要"]),
     ]
 
+    // MARK: - 数据驱动规则(JSON)
+
+    /// 单条分类规则(可 JSON 化)。
+    /// - category: EvidenceCategory 的枚举名(如 "laborContract"),非 rawValue。
+    /// - filename/firstLine/fullText: 关键词数组(regex 无元字符子串,用于 contains)。
+    public struct Rule: Codable, Sendable, Equatable {
+        public var category: String
+        public var filename: [String]
+        public var firstLine: [String]
+        public var fullText: [String]
+
+        public init(category: String, filename: [String], firstLine: [String], fullText: [String]) {
+            self.category = category
+            self.filename = filename
+            self.firstLine = firstLine
+            self.fullText = fullText
+        }
+
+        /// 解析为 (EvidenceCategory, patterns) 元组;category 名无效时返回 nil。
+        func resolved() -> (EvidenceCategory, [String], [String], [String])? {
+            guard let cat = EvidenceCategory.allCases.first(where: { "\($0)" == category }) else {
+                return nil
+            }
+            return (cat, filename, firstLine, fullText)
+        }
+    }
+
+    /// 当前生效的规则(默认 = 内置 fallback;可由 `loadRules` 从 JSON 替换)。
+    private static var activeRules: [(category: EvidenceCategory, filename: [String], firstLine: [String], fullText: [String])] = rules
+
+    /// 从 JSON 字符串加载规则并替换 activeRules。
+    /// JSON 结构: {"rules": [{"category": "...", "filename": [...], "firstLine": [...], "fullText": [...]}]}
+    /// 返回加载条数;JSON 无效/无有效规则时返回 0 且保持原规则(fail-closed)。
+    @discardableResult
+    public static func loadRules(fromJSON json: String) -> Int {
+        guard let data = json.data(using: .utf8),
+              let obj = try? JSONDecoder().decode(RulesFile.self, from: data) else {
+            return 0
+        }
+        let resolved = obj.rules.compactMap { $0.resolved() }
+        guard !resolved.isEmpty else { return 0 }
+        activeRules = resolved
+        return resolved.count
+    }
+
+    /// 从文件加载规则(路径形式,供测试/命令行使用)。
+    @discardableResult
+    public static func loadRules(fromFile url: URL) -> Int {
+        guard let data = try? Data(contentsOf: url),
+              let json = String(data: data, encoding: .utf8) else {
+            return 0
+        }
+        return loadRules(fromJSON: json)
+    }
+
+    /// 从 bundle 资源加载规则("ClassifierRules/classifier_rules.json")。
+    /// 失败时不报错,回退到内置规则。
+    @discardableResult
+    public static func loadRulesFromBundle(_ bundle: Bundle = .main) -> Int {
+        guard let url = bundle.url(forResource: "classifier_rules", withExtension: "json",
+                                   subdirectory: "ClassifierRules") else {
+            return 0
+        }
+        return loadRules(fromFile: url)
+    }
+
+    /// 规则文件容器。
+    public struct RulesFile: Codable, Sendable {
+        public var rules: [Rule]
+    }
+
     // MARK: - Public API
 
     /// Normalize OCR-ish input so keyword matching survives common variants:
@@ -131,7 +202,7 @@ public enum DocumentClassifier {
         var bestScore = 0
         var bestCategory: EvidenceCategory?
 
-        for (category, filenamePats, firstLinePats, fullTextPats) in rules {
+        for (category, filenamePats, firstLinePats, fullTextPats) in activeRules {
             var score = 0
 
             // Filename hits ×3 (with targeted exceptions for over-broad keywords)
@@ -174,7 +245,7 @@ public enum DocumentClassifier {
         let firstLine = ocrText.split(separator: "\n", omittingEmptySubsequences: true).first.map(String.init) ?? ""
 
         var scored: [(EvidenceCategory, Int)] = []
-        for (category, filenamePats, firstLinePats, fullTextPats) in rules {
+        for (category, filenamePats, firstLinePats, fullTextPats) in activeRules {
             var score = 0
             for pat in filenamePats {
                 if fileName.localizedCaseInsensitiveContains(pat) {

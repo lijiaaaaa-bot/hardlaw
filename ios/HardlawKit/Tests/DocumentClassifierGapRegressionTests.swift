@@ -247,4 +247,43 @@ final class DocumentClassifierGapRegressionTests: XCTestCase {
         )
         XCTAssertEqual(category, .emsReceipt, "R4: EMS 交寄单应识别为邮寄凭证")
     }
+
+    // MARK: - 数据驱动规则(JSON)
+
+    /// 规则 JSON 应与内置规则行为一致(加载后分类不回归)。
+    func testLoadRulesFromBundleKeepsClassification() throws {
+        let loaded = DocumentClassifier.loadRulesFromBundle(Bundle(for: type(of: self)))
+        // CI/测试 bundle 可能未打包资源目录,失败时回退内置规则——两者都应分类正确
+        let category = DocumentClassifier.classify(
+            fileName: "证据3、劳动合同.pdf",
+            ocrText: "劳动合同\n甲方：河南达海建设工程有限公司\n乙方：郭又义\n月工资：7550元"
+        )
+        XCTAssertEqual(category, .laborContract, "加载规则后劳动合同分类应保持,loaded=\(loaded)")
+    }
+
+    /// 无效 JSON 应 fail-closed(返回 0,规则保持)。
+    func testLoadInvalidJSONKeepsRules() {
+        let before = DocumentClassifier.classify(fileName: "证据5、银行工资表流水.pdf",
+            ocrText: "银行交易明细\n2025年1月 工资 7550元")
+        let loaded = DocumentClassifier.loadRules(fromJSON: "not valid json")
+        let after = DocumentClassifier.classify(fileName: "证据5、银行工资表流水.pdf",
+            ocrText: "银行交易明细\n2025年1月 工资 7550元")
+        XCTAssertEqual(loaded, 0, "无效 JSON 应返回 0")
+        XCTAssertEqual(before, after, "无效 JSON 后规则应保持不变")
+        XCTAssertEqual(after, .bankStatement)
+    }
+
+    /// 热更新:修改规则 JSON 立即生效,无需重编译。
+    func testHotReloadRules() {
+        let custom = """
+        {"rules": [
+          {"category": "chatRecord", "filename": ["微信", "聊天"], "firstLine": ["微信", "聊天记录"], "fullText": ["聊天", "转账"]},
+          {"category": "bankStatement", "filename": ["银行"], "firstLine": ["银行"], "fullText": ["流水"]}
+        ]}
+        """
+        let loaded = DocumentClassifier.loadRules(fromJSON: custom)
+        XCTAssertEqual(loaded, 2, "自定义规则应加载 2 条")
+        let chat = DocumentClassifier.classify(fileName: "聊天记录.pdf", ocrText: "转账 500 元")
+        XCTAssertEqual(chat, .chatRecord, "热更新后「聊天+转账」应判 chatRecord, got \(String(describing: chat))")
+    }
 }

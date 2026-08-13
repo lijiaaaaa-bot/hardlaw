@@ -1,0 +1,430 @@
+{
+  "rules": [
+    {
+      "category": "laborContract",
+      "filename": [
+        "劳动合同",
+        "劳动协议",
+        "聘用合同"
+      ],
+      "firstLine": [
+        "劳动合同",
+        "劳动协议",
+        "甲方",
+        "乙方",
+        "合同期限"
+      ],
+      "fullText": [
+        "劳动合同",
+        "用人单位",
+        "劳动报酬"
+      ]
+    },
+    {
+      "category": "bankStatement",
+      "filename": [
+        "银行流水",
+        "银行工资",
+        "交易明细",
+        "工资流水",
+        "银行转账"
+      ],
+      "firstLine": [
+        "银行",
+        "流水",
+        "交易明细",
+        "工资发放"
+      ],
+      "fullText": [
+        "交易流水号",
+        "借方",
+        "贷方",
+        "账户",
+        "开户银行"
+      ]
+    },
+    {
+      "category": "salaryTable",
+      "filename": [
+        "工资表",
+        "工资单",
+        "薪资表",
+        "工资明细",
+        "薪酬"
+      ],
+      "firstLine": [
+        "工资表",
+        "工资单",
+        "姓名",
+        "应发",
+        "实发",
+        "基本工资"
+      ],
+      "fullText": [
+        "应发工资",
+        "实发工资",
+        "基本工资",
+        "岗位工资"
+      ]
+    },
+    {
+      "category": "socialInsurance",
+      "filename": [
+        "参保证明",
+        "社保",
+        "社会保险",
+        "养老",
+        "医保"
+      ],
+      "firstLine": [
+        "参保证明",
+        "社会保险",
+        "参保",
+        "缴费基数",
+        "个人权益"
+      ],
+      "fullText": [
+        "参保单位",
+        "缴费基数",
+        "参保人"
+      ]
+    },
+    {
+      "category": "businessRegistration",
+      "filename": [
+        "工商登记",
+        "营业执照",
+        "企业信息",
+        "天眼查",
+        "企查查"
+      ],
+      "firstLine": [
+        "统一社会信用代码",
+        "法定代表人",
+        "注册资本",
+        "经营范围"
+      ],
+      "fullText": [
+        "统一社会信用代码",
+        "法定代表人"
+      ]
+    },
+    {
+      "category": "personnelOverlap",
+      "filename": [
+        "人事混同",
+        "人员混同"
+      ],
+      "firstLine": [
+        "人事",
+        "混同",
+        "人员交叉",
+        "同时任职"
+      ],
+      "fullText": [
+        "混同用工",
+        "人员混同",
+        "人员交叉",
+        "同时任职"
+      ]
+    },
+    {
+      "category": "financialOverlap",
+      "filename": [
+        "财务混同",
+        "资金混同",
+        "发票"
+      ],
+      "firstLine": [
+        "财务",
+        "混同",
+        "资金"
+      ],
+      "fullText": [
+        "混同",
+        "资金"
+      ]
+    },
+    {
+      "category": "terminationNotice",
+      "filename": [
+        "被迫解除",
+        "解除劳动关系",
+        "解除通知"
+      ],
+      "firstLine": [
+        "被迫解除",
+        "解除劳动关系",
+        "通知书",
+        "劳动合同法"
+      ],
+      "fullText": [
+        "第38条",
+        "被迫",
+        "解除"
+      ]
+    },
+    {
+      "category": "emsReceipt",
+      "filename": [
+        "EMS",
+        "交寄单",
+        "邮寄凭证",
+        "快递单",
+        "邮寄"
+      ],
+      "firstLine": [
+        "EMS",
+        "交寄",
+        "快递",
+        "邮件号码",
+        "寄件人",
+        "收件人"
+      ],
+      "fullText": [
+        "EMS",
+        "交寄",
+        "快递"
+      ]
+    },
+    {
+      "category": "dismissalNotice",
+      "filename": [
+        "解除通知",
+        "终止通知",
+        "辞退",
+        "开除"
+      ],
+      "firstLine": [
+        "解除",
+        "终止",
+        "通知",
+        "辞退"
+      ],
+      "fullText": [
+        "解除",
+        "终止"
+      ]
+    },
+    {
+      "category": "attendanceRecord",
+      "filename": [
+        "打卡",
+        "考勤",
+        "出勤",
+        "签到"
+      ],
+      "firstLine": [
+        "打卡",
+        "考勤",
+        "出勤",
+        "签到",
+        "上下班"
+      ],
+      "fullText": [
+        "打卡",
+        "考勤"
+      ]
+    },
+    {
+      "category": "workHistory",
+      "filename": [
+        "工龄",
+        "工作年限",
+        "工作证明",
+        "入职",
+        "建造师",
+        "职称",
+        "聘任"
+      ],
+      "firstLine": [
+        "工龄",
+        "工作年限",
+        "入职",
+        "参加工作"
+      ],
+      "fullText": [
+        "工龄",
+        "年限",
+        "入职时间"
+      ]
+    },
+    {
+      "category": "annualLeave",
+      "filename": [
+        "年休假",
+        "年假",
+        "休假",
+        "请假"
+      ],
+      "firstLine": [
+        "年休假",
+        "年假",
+        "休假审批",
+        "请假"
+      ],
+      "fullText": [
+        "年休假",
+        "休假"
+      ]
+    },
+    {
+      "category": "wageStandard",
+      "filename": [
+        "工资标准",
+        "月工资",
+        "薪资标准"
+      ],
+      "firstLine": [
+        "月工资",
+        "工资标准",
+        "薪资"
+      ],
+      "fullText": [
+        "月工资",
+        "工资标准"
+      ]
+    },
+    {
+      "category": "entryDate",
+      "filename": [
+        "入职日期",
+        "入职时间",
+        "报到"
+      ],
+      "firstLine": [
+        "入职日期",
+        "入职时间",
+        "报到"
+      ],
+      "fullText": [
+        "入职"
+      ]
+    },
+    {
+      "category": "terminationDate",
+      "filename": [
+        "离职日期",
+        "终止日期",
+        "解除日期"
+      ],
+      "firstLine": [
+        "离职",
+        "终止日期",
+        "解除日期"
+      ],
+      "fullText": [
+        "离职",
+        "终止"
+      ]
+    },
+    {
+      "category": "administrativeDecision",
+      "filename": [
+        "责令",
+        "限期支付",
+        "劳动监察",
+        "行政决定"
+      ],
+      "firstLine": [
+        "劳动监察",
+        "责令",
+        "限期",
+        "行政"
+      ],
+      "fullText": [
+        "责令",
+        "限期"
+      ]
+    },
+    {
+      "category": "housingFund",
+      "filename": [
+        "公积金",
+        "住房公积金"
+      ],
+      "firstLine": [
+        "公积金",
+        "住房公积金",
+        "缴存"
+      ],
+      "fullText": [
+        "住房公积金",
+        "缴存单位"
+      ]
+    },
+    {
+      "category": "penaltyNotice",
+      "filename": [
+        "行政处罚",
+        "行政处理",
+        "劳动监察"
+      ],
+      "firstLine": [
+        "行政处罚",
+        "行政处理",
+        "事先告知",
+        "决定书"
+      ],
+      "fullText": [
+        "行政处罚",
+        "行政处理"
+      ]
+    },
+    {
+      "category": "arrearsStatement",
+      "filename": [
+        "欠薪",
+        "拖欠",
+        "未发放",
+        "未发工资",
+        "欠发工资"
+      ],
+      "firstLine": [
+        "拖欠",
+        "欠发",
+        "未发放",
+        "欠薪"
+      ],
+      "fullText": [
+        "未发放",
+        "欠薪",
+        "拖欠"
+      ]
+    },
+    {
+      "category": "chatRecord",
+      "filename": [
+        "微信",
+        "聊天",
+        "钉钉",
+        "短信"
+      ],
+      "firstLine": [
+        "微信",
+        "聊天记录",
+        "钉钉",
+        "消息"
+      ],
+      "fullText": [
+        "聊天",
+        "消息"
+      ]
+    },
+    {
+      "category": "other",
+      "filename": [
+        "会议纪要",
+        "证书",
+        "补充协议",
+        "付款单据"
+      ],
+      "firstLine": [
+        "会议纪要"
+      ],
+      "fullText": [
+        "会议纪要"
+      ]
+    }
+  ]
+}
