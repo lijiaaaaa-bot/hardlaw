@@ -48,7 +48,7 @@ final class CourtViewModel {
     }
     /// LLM 后端 — 默认 MLX on-device（Metal GPU）；模型未缓存（首次使用）时
     /// 自动回退本地规则引擎，MLX 加载/推理失败时由 FailSafeLLM 兜底降级，
-    /// 绝不联网挂起。集成测试可注入 MockLLM / RuleBasedLLM，保证离线可跑。
+    /// 绝不联网挂起。集成测试可注入 RuleBasedLLM，保证离线可跑。
     var llm: any LLMBackend = {
         let fallback = RuleBasedLLM(rules: RuleBasedLLM.defaultRules())
         if MLXLLM.isAvailable {
@@ -352,7 +352,7 @@ final class CourtViewModel {
         if llm is RuleBasedLLM {
             statusMessage = "首次使用需联网下载AI模型（约500MB），当前使用本地规则引擎"
         }
-        // LLM 后端 — 默认 MLX on-device；测试注入 MockLLM/RuleBasedLLM 保证离线可跑
+        // LLM 后端 — 默认 MLX on-device；测试注入 RuleBasedLLM 保证离线可跑
         let court = Court(statutes: statutes, procedure: procedure, llm: llm)
         let result = await court.hear(caseData: caseData)
         // MLX 运行时失败（模型损坏/加载错误）→ FailSafeLLM 已降级为规则引擎，

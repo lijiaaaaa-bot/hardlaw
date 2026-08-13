@@ -1,42 +1,45 @@
 # Hardlaw — iOS App
 
-On-device AI Compliance Court for iOS 17.0+.
-All processing is local: Vision framework evidence collection + pluggable LLM judgment,
-enforced by a hard-coded rule engine that defaults to reject (fail-closed).
+On-device legal evidence workbench for iOS 17.0+.
+All processing is local: OCR evidence collection + offline law search + AI auto-fill,
+enforced by a fail-closed rule engine that defaults to reject.
 
 ## Architecture
 
 ```
-Camera/Photo → VisionEvidenceCollector (ANE-accelerated OCR + face/rectangle detection)
-             └─ MLXVisionCollector (semantic doc understanding: handwriting, stamps, fields, anomalies)
-             → EvidenceBundle (refs + source material)
-             → Court.hear(caseData) → Procedure state machine
-             → LLM judge (RuleBasedLLM / MockLLM / MLXLLM)
-             → VerdictParser (3-tier: JSON → terminal token → default-to-reject)
-             → EvidenceValidator (snippet substring check — anti-hallucination)
-             → CaseResult (approved/rejected/blocked/stalled)
+Case folder/zip → ZipReader/ImportPackage (batch import, cancelable)
+               → PaddleOCR / VisionEvidenceCollector (OCR evidence)
+               → DocumentClassifier (evidence type classification)
+               → AutoFillPipeline → AutoFillRuleEngine (source-grounded field fill)
+               → Court.hear(caseData) → Procedure state machine
+               → LLM judge (RuleBasedLLM / FailSafeLLM / MLXLLM)
+               → EvidenceValidator (snippet substring check — anti-hallucination)
+               → CaseResult (approved/rejected/blocked/stalled)
+LawStore/LawIndex → offline keyword + semantic (BGE-512) retrieval for citation
 ```
 
-The Python hardlaw framework's legal analogy is preserved:
+## Module Map
 
 | Module | Swift | Role |
 |---|---|---|
-| Statute | `Statute`, `StatuteBook` | The law: what's prohibited, what evidence is required |
-| Procedure | `Procedure`, `Step`, `StepKind` | State machine: CODE (deterministic) vs JUDGMENT (LLM) |
-| Evidence | `EvidenceRef`, `EvidenceRule`, `EvidenceValidator` | Rules of evidence: citation requirements, source verification |
+| Statute | `Statute`, `StatuteBook`, `LaborLawStatutes` | The law: violations, required evidence |
+| LegalKnowledge | `LawStore`, `LawIndex`, `CoreMLEmbeddingProvider` | Offline Chinese law retrieval (11,724 chunks, 512-dim BGE vectors) |
+| Procedure | `Procedure`, `Step`, `StallDetector` | State machine: CODE (deterministic) vs JUDGMENT (LLM) |
+| Evidence | `EvidenceRef`, `EvidenceRule`, `EvidenceValidator`, `DocumentClassifier` | Rules of evidence: citation requirements, source verification |
 | Verdict | `Verdict`, `VerdictParser`, `Fingerprint` | Structured judgment, 3-tier fail-closed parsing, SHA-256 stall detection |
-| Court | `Court` (actor) | Runtime enforcing all constraints |
-
-JSON wire format is byte-identical to Python — statutes can round-trip between languages.
+| Court | `Court` (actor), `CourtProcedures`, `Goal` | Runtime enforcing all constraints |
+| AutoFill | `AutoFillParser`, `AutoFillPrompt`, `AutoFillRuleEngine` | AI field auto-fill with source-grounding gate |
+| Archive | `ImportPackage`, `ZipReader` | Batch folder/zip import, zip-bomb & path-traversal protection |
+| LLM | `LLMBackend`, `FailSafeLLM`, `RuleBasedLLM`, `MLXLLM` | Pluggable judgment backends with transparent fallback |
 
 ## Requirements
 
 - macOS with Xcode 16.0+
 - iOS 17.0+ (simulator or device)
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`)
-- [mlx-libraries](https://github.com/mlx-community/mlx-libraries) (Swift Package, for on-device LLM + vision)
+- [mlx-swift-lm](https://github.com/ml-explore/mlx-swift-lm) (Swift Package, for on-device LLM)
   - 4 GB+ device RAM required for MLX backends
-  - ~500 MB storage per model (auto-downloaded on first use)
+  - ~1.9 GB storage for the default 3B model (auto-downloaded on first use)
 
 ## Quick Start
 
@@ -58,23 +61,28 @@ xcodebuild test -project Hardlaw.xcodeproj -scheme HardlawKit \
 ```
 ios/
 ├── project.yml                    # XcodeGen manifest (3 targets)
-├── HardlawKit/                    # Framework: core engine + Vision
+├── HardlawKit/                    # Framework: core engine
 │   ├── Sources/
-│   │   ├── Statute/               # Statute, ViolationType, StatuteBook
-│   │   ├── Procedure/             # Procedure, Step, CaseContext, StallDetector
-│   │   ├── Evidence/              # EvidenceRef, EvidenceRule, EvidenceValidator
-│   │   ├── Verdict/               # Verdict, VerdictParser, Fingerprint (CryptoKit)
-│   │   ├── Court/                 # actor Court, CaseResult
-│   │   ├── LLM/                   # LLMBackend protocol, MockLLM, RuleBasedLLM, MLXLLM
-│   │   └── Support/               # JSONValue
-│   ├── Vision/                    # VisionEvidenceCollector, MLXVisionCollector, PaddleOCRAdapter
-│   └── Tests/                     # 99 XCTest unit tests (1:1 Python port)
+│   │   ├── Archive/               # ImportPackage, ZipReader
+│   │   ├── AutoFill/              # AutoFillParser, AutoFillPrompt, AutoFillRuleEngine
+│   │   ├── Court/                 # actor Court, CaseResult, CourtProcedures, Goal
+│   │   ├── Evidence/              # EvidenceRef, EvidenceRule, EvidenceValidator, DocumentClassifier
+│   │   ├── LegalKnowledge/        # LawStore, LawIndex, CoreMLEmbeddingProvider
+│   │   ├── LLM/                   # LLMBackend, FailSafeLLM, RuleBasedLLM, MLXLLM
+│   │   ├── Procedure/             # Procedure, Step, StallDetector
+│   │   ├── Statute/               # Statute, StatuteBook, LaborLawStatutes
+│   │   ├── Support/               # JSONValue
+│   │   └── Verdict/               # Verdict, VerdictParser, Fingerprint
+│   ├── Vision/                    # VisionEvidenceCollector
+│   └── Tests/                     # 186 XCTest cases (incl. Guo Youyi E2E)
 ├── HardlawApp/                    # SwiftUI App
 │   ├── HardlawApp.swift           # @main entry point
 │   ├── CourtViewModel.swift       # @Observable MVVM state machine
-│   ├── Camera/                    # AVCaptureSession + preview
-│   ├── UI/                        # Home, LiveModeration, AuditResult, CaseResult
-│   └── Statutes/                  # ContentModerationStatutes (port of ./examples/02)
+│   ├── Services/                  # AutoFillPipeline, OCRRouter, PaddleOCREngine(.mm), EvidenceFileStore, ExcelExport
+│   ├── PaddleOCR/                 # bundled static lib + inference models + ppocr_keys.txt
+│   ├── LegalKnowledge/            # laws_chunks/ids/vocab/vectors.bin (512-dim, single source of truth)
+│   ├── State/                     # IntentParser, PersistenceController
+│   └── UI/                        # Home, CaseWorkbench, CaseSections, GoalProgress, ImportProgress
 └── Models/                        # (gitignored) MLX model files
 ```
 
@@ -82,49 +90,46 @@ ios/
 
 | Backend | Description | Latency | Requirements |
 |---|---|---|---|
-| **RuleBasedLLM** | Deterministic regex detection (profanity, PII, emails, phones, credit cards) | <1ms | None |
-| **MockLLM** | Scripted responses for testing | <1ms | None |
-| **MLXLLM** | On-device LLM (Qwen2.5-0.5B-Instruct 4-bit) | 30-90s | mlx-libraries, 4GB+ RAM |
-| **MLXVisionCollector** | Semantic document understanding (handwriting, stamps, fields, anomalies) | 1-5s per image | mlx-libraries, 4GB+ RAM |
+| **RuleBasedLLM** | Deterministic labor-law evidence-gap rules (劳动关系/工资标准/欠薪/混同用工/解除程序) | <1ms | None |
+| **FailSafeLLM** | Wraps a primary backend; on failure falls back to RuleBasedLLM and logs the cause | — | None |
+| **MLXLLM** | On-device LLM via mlx-swift-lm (default 3B model) | 30-90s | mlx-swift-lm, 4GB+ RAM |
 
-## App Modes
+## App Workflows
 
-### Live Moderation
-- Camera feed with real-time OCR
-- RuleBasedLLM scans each frame (<1ms)
-- Findings overlay on camera preview
-- All processing on-device, zero network
+### Case Workbench
+- Batch import case folders / zips (cancelable, orphan-case cleanup)
+- Evidence classification → AI auto-fill with source-grounding gate (numbers must hit OCR text verbatim)
+- Manual overrides always win; version stamps prevent stale AI writes
+- Goal tracking (`Goal`), sectioned case view, Excel export
 
-### Text Audit
-- Paste or type content
-- Full Court procedure: prescan → verify → severity → verdict
-- Detailed case result with evidence refs and findings
+### Legal Search
+- Offline hybrid retrieval: `NLTokenizer` keyword + BGE-small-zh-v1.5 512-dim semantic vectors
+- Fail-closed degradation: no vectors/model → keyword-only; dimension mismatch → warning (no silent breakage)
 
-### Photo Audit
-- Pick from library or capture
-- Vision OCR extracts text as evidence
-- Evidence registered in source material (anti-hallucination guarantee)
-- Full Court procedure with selected backend
+### Evidence & Verdict
+- OCR evidence registered in source material (anti-hallucination guarantee)
+- Full Court procedure with selected backend; `Fingerprint` SHA-256 stall detection
 
 ## Key Design Decisions
 
-1. **Fail-closed everywhere**: Verdict.refuted defaults to true, parse failures reject, missing evidence blocks
+1. **Fail-closed everywhere**: `Verdict.refuted` defaults to true, parse failures reject, missing evidence blocks
 2. **Evidence = substring of source**: Cited snippets must exist verbatim in registered source material
-3. **JSON key parity with Python**: `required_evidence`, `default_to_reject` etc. — statutes round-trip between languages
-4. **actor Court**: Swift concurrency serializes hearings automatically
-5. **Swift 6 strict concurrency**: All model types are Sendable value types
+3. **actor isolation**: `Court`, `FailSafeLLM`, `MLXLLM`, `AutoFillRuleEngine` never block the main thread
+4. **Swift 6 strict concurrency**: All model types are Sendable value types
 
 ## Roadmap
 
-- [x] MLXLLM integration (mlx-libraries + Qwen2.5-0.5B-Instruct 4-bit)
-- [x] MLXVisionCollector (semantic document analysis: handwriting, stamps, fields, anomalies)
-- [ ] Add VNDetectHumanBodyPoseRequest for pose evidence
-- [ ] Add VNDetectFaceLandmarksRequest for facial expression evidence
+- [x] MLXLLM integration (mlx-swift-lm)
+- [x] PaddleOCR integration
+- [x] Batch import + AI auto-fill (source-grounding gate)
+- [x] Offline legal search with 512-dim BGE vectors
+- [x] Guo Youyi end-to-end test vs lawyer ground truth
+- [x] Bundle CoreML semantic model (`bge-small-zh-v1.5.mlpackage` + `vocab.txt`, via `scripts/convert_bge_to_coreml.py`)
+- [x] GitHub Actions CI (xcodegen + xcodebuild test)
 - [ ] User-definable statutes via JSON import
 - [ ] Case history persistence (SwiftData)
-- [ ] Widget for quick audit
 - [ ] Apple Intelligence LLM backend (when API available)
 
 ## License
 
-MIT (same as parent hardlaw project)
+MIT — see root [LICENSE](../LICENSE).
