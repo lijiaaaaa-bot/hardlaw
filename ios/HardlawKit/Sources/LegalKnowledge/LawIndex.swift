@@ -9,7 +9,7 @@ import Foundation
 /// ## Architecture
 ///
 /// - **Document vectors**: Pre-computed by Python, loaded from `laws_vectors.bin`.
-///   11,157 vectors × 512 dimensions, float32, L2-normalized.
+///   11,724 vectors × 512 dimensions, float32, L2-normalized.
 /// - **Query embedding**: Optional `EmbeddingProvider` (CoreML/MLX). When
 ///   unavailable, falls back to keyword-only search.
 /// - **RRF merge**: Reciprocal Rank Fusion combining keyword and semantic
