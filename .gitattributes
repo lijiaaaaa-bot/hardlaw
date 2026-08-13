@@ -1,0 +1,8 @@
+# Git LFS — binary/large artifacts
+# New files matching these patterns are stored as LFS pointers.
+# NOTE: already-committed blobs are NOT retroactively converted; see docs/git-lfs.md.
+*.a        filter=lfs diff=lfs merge=lfs -text
+*.bin      filter=lfs diff=lfs merge=lfs -text
+*.pdiparams filter=lfs diff=lfs merge=lfs -text
+*.pdmodel  filter=lfs diff=lfs merge=lfs -text
+*.mp4      filter=lfs diff=lfs merge=lfs -text

@@ -23,3 +23,6 @@ ios/.swiftpm/
 ios/**/Packages/
 ios/Models/*.mlmodelc
 ios/Models/*.mlpackage
+
+# Reasonix runtime state (session/task snapshots)
+.reasonix/
